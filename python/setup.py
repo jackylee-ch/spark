@@ -20,7 +20,7 @@ from __future__ import print_function
 import glob
 import os
 import sys
-from setuptools import setup, find_packages
+from setuptools import setup
 from shutil import copyfile, copytree, rmtree
 
 if sys.version_info < (2, 7):
@@ -201,7 +201,7 @@ try:
             'pyspark.examples.src.main.python': ['*.py', '*/*.py']},
         scripts=scripts,
         license='http://www.apache.org/licenses/LICENSE-2.0',
-        install_requires=['py4j==0.10.7'],
+        install_requires=['py4j==0.10.8.1'],
         setup_requires=['pypandoc'],
         extras_require={
             'ml': ['numpy>=1.7'],

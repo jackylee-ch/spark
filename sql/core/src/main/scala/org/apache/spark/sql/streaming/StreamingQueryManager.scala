@@ -18,6 +18,7 @@
 package org.apache.spark.sql.streaming
 
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.annotation.concurrent.GuardedBy
 
 import scala.collection.mutable
@@ -25,7 +26,7 @@ import scala.collection.mutable
 import org.apache.hadoop.fs.Path
 
 import org.apache.spark.SparkException
-import org.apache.spark.annotation.InterfaceStability
+import org.apache.spark.annotation.Evolving
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{AnalysisException, DataFrame, SparkSession}
 import org.apache.spark.sql.catalyst.analysis.UnsupportedOperationChecker
@@ -42,7 +43,7 @@ import org.apache.spark.util.{Clock, SystemClock, Utils}
  *
  * @since 2.0.0
  */
-@InterfaceStability.Evolving
+@Evolving
 class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Logging {
 
   private[sql] val stateStoreCoordinator =
@@ -151,8 +152,10 @@ class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Lo
   @throws[StreamingQueryException]
   def awaitAnyTermination(timeoutMs: Long): Boolean = {
 
-    val startTime = System.currentTimeMillis
-    def isTimedout = System.currentTimeMillis - startTime >= timeoutMs
+    val startTime = System.nanoTime()
+    def isTimedout = {
+      System.nanoTime() - startTime >= TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+    }
 
     awaitTerminationLock.synchronized {
       while (!isTimedout && lastTerminatedQuery == null) {
@@ -221,9 +224,13 @@ class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Lo
       }
     }.getOrElse {
       if (useTempCheckpointLocation) {
-        // Delete the temp checkpoint when a query is being stopped without errors.
         deleteCheckpointOnStop = true
-        Utils.createTempDir(namePrefix = s"temporary").getCanonicalPath
+        val tempDir = Utils.createTempDir(namePrefix = s"temporary").getCanonicalPath
+        logWarning("Temporary checkpoint location created which is deleted normally when" +
+          s" the query didn't fail: $tempDir. If it's required to delete it under any" +
+          s" circumstances, please set ${SQLConf.FORCE_DELETE_TEMP_CHECKPOINT_LOCATION.key} to" +
+          s" true. Important to know deleting temp checkpoint folder is best effort.")
+        tempDir
       } else {
         throw new AnalysisException(
           "checkpointLocation must be specified either " +
@@ -246,9 +253,7 @@ class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Lo
     val analyzedPlan = df.queryExecution.analyzed
     df.queryExecution.assertAnalyzed()
 
-    if (sparkSession.sessionState.conf.isUnsupportedOperationCheckEnabled) {
-      UnsupportedOperationChecker.checkForStreaming(analyzedPlan, outputMode)
-    }
+    val operationCheckEnabled = sparkSession.sessionState.conf.isUnsupportedOperationCheckEnabled
 
     if (sparkSession.sessionState.conf.adaptiveExecutionEnabled) {
       logWarning(s"${SQLConf.ADAPTIVE_EXECUTION_ENABLED.key} " +
@@ -257,7 +262,7 @@ class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Lo
 
     (sink, trigger) match {
       case (v2Sink: StreamingWriteSupportProvider, trigger: ContinuousTrigger) =>
-        if (sparkSession.sessionState.conf.isUnsupportedOperationCheckEnabled) {
+        if (operationCheckEnabled) {
           UnsupportedOperationChecker.checkForContinuous(analyzedPlan, outputMode)
         }
         new StreamingQueryWrapper(new ContinuousExecution(
@@ -272,6 +277,9 @@ class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Lo
           extraOptions,
           deleteCheckpointOnStop))
       case _ =>
+        if (operationCheckEnabled) {
+          UnsupportedOperationChecker.checkForStreaming(analyzedPlan, outputMode)
+        }
         new StreamingQueryWrapper(new MicroBatchExecution(
           sparkSession,
           userSpecifiedName.orNull,
@@ -311,7 +319,7 @@ class StreamingQueryManager private[sql] (sparkSession: SparkSession) extends Lo
       outputMode: OutputMode,
       useTempCheckpointLocation: Boolean = false,
       recoverFromCheckpointLocation: Boolean = true,
-      trigger: Trigger = ProcessingTime(0),
+      trigger: Trigger = Trigger.ProcessingTime(0),
       triggerClock: Clock = new SystemClock()): StreamingQuery = {
     val query = createQuery(
       userSpecifiedName,
