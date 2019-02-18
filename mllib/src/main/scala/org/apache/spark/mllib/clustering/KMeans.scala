@@ -327,7 +327,7 @@ class KMeans private (
         distanceMeasureInstance.centroid(sum, count)
       }
 
-      bcCenters.destroy()
+      bcCenters.destroy(blocking = false)
 
       // Update the cluster centers and costs
       converged = true
@@ -405,8 +405,8 @@ class KMeans private (
       }.persist(StorageLevel.MEMORY_AND_DISK)
       val sumCosts = costs.sum()
 
-      bcNewCenters.unpersist()
-      preCosts.unpersist()
+      bcNewCenters.unpersist(blocking = false)
+      preCosts.unpersist(blocking = false)
 
       val chosen = data.zip(costs).mapPartitionsWithIndex { (index, pointCosts) =>
         val rand = new XORShiftRandom(seed ^ (step << 16) ^ index)
@@ -417,8 +417,8 @@ class KMeans private (
       step += 1
     }
 
-    costs.unpersist()
-    bcNewCentersList.foreach(_.destroy())
+    costs.unpersist(blocking = false)
+    bcNewCentersList.foreach(_.destroy(false))
 
     val distinctCenters = centers.map(_.vector).distinct.map(new VectorWithNorm(_))
 
@@ -433,7 +433,7 @@ class KMeans private (
         .map(distanceMeasureInstance.findClosest(bcCenters.value, _)._1)
         .countByValue()
 
-      bcCenters.destroy()
+      bcCenters.destroy(blocking = false)
 
       val myWeights = distinctCenters.indices.map(countMap.getOrElse(_, 0L).toDouble).toArray
       LocalKMeans.kMeansPlusPlus(0, distinctCenters.toArray, myWeights, k, 30)

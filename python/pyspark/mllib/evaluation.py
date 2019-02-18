@@ -16,11 +16,12 @@
 #
 
 import sys
+import warnings
 
 from pyspark import since
 from pyspark.mllib.common import JavaModelWrapper, callMLlibFunc
 from pyspark.sql import SQLContext
-from pyspark.sql.types import StructField, StructType, DoubleType
+from pyspark.sql.types import StructField, StructType, DoubleType, IntegerType, ArrayType
 
 __all__ = ['BinaryClassificationMetrics', 'RegressionMetrics',
            'MulticlassMetrics', 'RankingMetrics']
@@ -162,7 +163,7 @@ class MulticlassMetrics(JavaModelWrapper):
     """
     Evaluator for multiclass classification.
 
-    :param predAndLabelsWithOptWeight: an RDD of prediction, label and optional weight.
+    :param predictionAndLabels: an RDD of (prediction, label) pairs.
 
     >>> predictionAndLabels = sc.parallelize([(0.0, 0.0), (0.0, 1.0), (0.0, 0.0),
     ...     (1.0, 0.0), (1.0, 1.0), (1.0, 1.0), (1.0, 1.0), (2.0, 2.0), (2.0, 0.0)])
@@ -191,48 +192,16 @@ class MulticlassMetrics(JavaModelWrapper):
     0.66...
     >>> metrics.weightedFMeasure(2.0)
     0.65...
-    >>> predAndLabelsWithOptWeight = sc.parallelize([(0.0, 0.0, 1.0), (0.0, 1.0, 1.0),
-    ...      (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 1.0),
-    ...      (2.0, 2.0, 1.0), (2.0, 0.0, 1.0)])
-    >>> metrics = MulticlassMetrics(predAndLabelsWithOptWeight)
-    >>> metrics.confusionMatrix().toArray()
-    array([[ 2.,  1.,  1.],
-           [ 1.,  3.,  0.],
-           [ 0.,  0.,  1.]])
-    >>> metrics.falsePositiveRate(0.0)
-    0.2...
-    >>> metrics.precision(1.0)
-    0.75...
-    >>> metrics.recall(2.0)
-    1.0...
-    >>> metrics.fMeasure(0.0, 2.0)
-    0.52...
-    >>> metrics.accuracy
-    0.66...
-    >>> metrics.weightedFalsePositiveRate
-    0.19...
-    >>> metrics.weightedPrecision
-    0.68...
-    >>> metrics.weightedRecall
-    0.66...
-    >>> metrics.weightedFMeasure()
-    0.66...
-    >>> metrics.weightedFMeasure(2.0)
-    0.65...
 
     .. versionadded:: 1.4.0
     """
 
-    def __init__(self, predAndLabelsWithOptWeight):
-        sc = predAndLabelsWithOptWeight.ctx
+    def __init__(self, predictionAndLabels):
+        sc = predictionAndLabels.ctx
         sql_ctx = SQLContext.getOrCreate(sc)
-        numCol = len(predAndLabelsWithOptWeight.first())
-        schema = StructType([
+        df = sql_ctx.createDataFrame(predictionAndLabels, schema=StructType([
             StructField("prediction", DoubleType(), nullable=False),
-            StructField("label", DoubleType(), nullable=False)])
-        if (numCol == 3):
-            schema.add("weight", DoubleType(), False)
-        df = sql_ctx.createDataFrame(predAndLabelsWithOptWeight, schema)
+            StructField("label", DoubleType(), nullable=False)]))
         java_class = sc._jvm.org.apache.spark.mllib.evaluation.MulticlassMetrics
         java_model = java_class(df._jdf)
         super(MulticlassMetrics, self).__init__(java_model)
@@ -260,28 +229,46 @@ class MulticlassMetrics(JavaModelWrapper):
         return self.call("falsePositiveRate", label)
 
     @since('1.4.0')
-    def precision(self, label):
+    def precision(self, label=None):
         """
-        Returns precision.
+        Returns precision or precision for a given label (category) if specified.
         """
-        return self.call("precision", float(label))
+        if label is None:
+            # note:: Deprecated in 2.0.0. Use accuracy.
+            warnings.warn("Deprecated in 2.0.0. Use accuracy.", DeprecationWarning)
+            return self.call("precision")
+        else:
+            return self.call("precision", float(label))
 
     @since('1.4.0')
-    def recall(self, label):
+    def recall(self, label=None):
         """
-        Returns recall.
+        Returns recall or recall for a given label (category) if specified.
         """
-        return self.call("recall", float(label))
+        if label is None:
+            # note:: Deprecated in 2.0.0. Use accuracy.
+            warnings.warn("Deprecated in 2.0.0. Use accuracy.", DeprecationWarning)
+            return self.call("recall")
+        else:
+            return self.call("recall", float(label))
 
     @since('1.4.0')
-    def fMeasure(self, label, beta=None):
+    def fMeasure(self, label=None, beta=None):
         """
-        Returns f-measure.
+        Returns f-measure or f-measure for a given label (category) if specified.
         """
         if beta is None:
-            return self.call("fMeasure", label)
+            if label is None:
+                # note:: Deprecated in 2.0.0. Use accuracy.
+                warnings.warn("Deprecated in 2.0.0. Use accuracy.", DeprecationWarning)
+                return self.call("fMeasure")
+            else:
+                return self.call("fMeasure", label)
         else:
-            return self.call("fMeasure", label, beta)
+            if label is None:
+                raise Exception("If the beta parameter is specified, label can not be none")
+            else:
+                return self.call("fMeasure", label, beta)
 
     @property
     @since('2.0.0')

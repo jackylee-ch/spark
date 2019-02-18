@@ -95,7 +95,7 @@ private[spark] class NodeIdCache(
       splits: Array[Array[Split]]): Unit = {
     if (prevNodeIdsForInstances != null) {
       // Unpersist the previous one if one exists.
-      prevNodeIdsForInstances.unpersist()
+      prevNodeIdsForInstances.unpersist(false)
     }
 
     prevNodeIdsForInstances = nodeIdsForInstances
@@ -168,11 +168,11 @@ private[spark] class NodeIdCache(
     }
     if (nodeIdsForInstances != null) {
       // Unpersist current one if one exists.
-      nodeIdsForInstances.unpersist()
+      nodeIdsForInstances.unpersist(false)
     }
     if (prevNodeIdsForInstances != null) {
       // Unpersist the previous one if one exists.
-      prevNodeIdsForInstances.unpersist()
+      prevNodeIdsForInstances.unpersist(false)
     }
   }
 }

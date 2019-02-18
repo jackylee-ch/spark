@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.kafka010
 
-import java.{util => ju}
+import scala.collection.JavaConverters._
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
@@ -41,12 +41,10 @@ case object KafkaWriterCommitMessage extends WriterCommitMessage
  * @param schema The schema of the input data.
  */
 class KafkaStreamingWriteSupport(
-    topic: Option[String],
-    producerParams: ju.Map[String, Object],
-    schema: StructType)
+    topic: Option[String], producerParams: Map[String, String], schema: StructType)
   extends StreamingWriteSupport {
 
-  validateQuery(schema.toAttributes, producerParams, topic)
+  validateQuery(schema.toAttributes, producerParams.toMap[String, Object].asJava, topic)
 
   override def createStreamingWriterFactory(): KafkaStreamWriterFactory =
     KafkaStreamWriterFactory(topic, producerParams, schema)
@@ -64,9 +62,7 @@ class KafkaStreamingWriteSupport(
  * @param schema The schema of the input data.
  */
 case class KafkaStreamWriterFactory(
-    topic: Option[String],
-    producerParams: ju.Map[String, Object],
-    schema: StructType)
+    topic: Option[String], producerParams: Map[String, String], schema: StructType)
   extends StreamingDataWriterFactory {
 
   override def createWriter(
@@ -87,12 +83,12 @@ case class KafkaStreamWriterFactory(
  * @param inputSchema The attributes in the input data.
  */
 class KafkaStreamDataWriter(
-    targetTopic: Option[String],
-    producerParams: ju.Map[String, Object],
-    inputSchema: Seq[Attribute])
+    targetTopic: Option[String], producerParams: Map[String, String], inputSchema: Seq[Attribute])
   extends KafkaRowWriter(inputSchema, targetTopic) with DataWriter[InternalRow] {
+  import scala.collection.JavaConverters._
 
-  private lazy val producer = CachedKafkaProducer.getOrCreate(producerParams)
+  private lazy val producer = CachedKafkaProducer.getOrCreate(
+    new java.util.HashMap[String, Object](producerParams.asJava))
 
   def write(row: InternalRow): Unit = {
     checkForErrors()
@@ -116,7 +112,7 @@ class KafkaStreamDataWriter(
     if (producer != null) {
       producer.flush()
       checkForErrors()
-      CachedKafkaProducer.close(producerParams)
+      CachedKafkaProducer.close(new java.util.HashMap[String, Object](producerParams.asJava))
     }
   }
 }

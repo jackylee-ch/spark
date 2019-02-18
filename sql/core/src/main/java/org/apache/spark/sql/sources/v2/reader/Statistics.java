@@ -19,13 +19,13 @@ package org.apache.spark.sql.sources.v2.reader;
 
 import java.util.OptionalLong;
 
-import org.apache.spark.annotation.Evolving;
+import org.apache.spark.annotation.InterfaceStability;
 
 /**
  * An interface to represent statistics for a data source, which is returned by
- * {@link SupportsReportStatistics#estimateStatistics()}.
+ * {@link SupportsReportStatistics#estimateStatistics(ScanConfig)}.
  */
-@Evolving
+@InterfaceStability.Evolving
 public interface Statistics {
   OptionalLong sizeInBytes();
   OptionalLong numRows();

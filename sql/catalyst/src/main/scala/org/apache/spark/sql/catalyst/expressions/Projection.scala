@@ -18,7 +18,6 @@
 package org.apache.spark.sql.catalyst.expressions
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.BindReferences.bindReferences
 import org.apache.spark.sql.catalyst.expressions.codegen.{GenerateMutableProjection, GenerateSafeProjection, GenerateUnsafeProjection}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{DataType, StructType}
@@ -31,7 +30,7 @@ import org.apache.spark.sql.types.{DataType, StructType}
  */
 class InterpretedProjection(expressions: Seq[Expression]) extends Projection {
   def this(expressions: Seq[Expression], inputSchema: Seq[Attribute]) =
-    this(bindReferences(expressions, inputSchema))
+    this(expressions.map(BindReferences.bindReference(_, inputSchema)))
 
   override def initialize(partitionIndex: Int): Unit = {
     expressions.foreach(_.foreach {
@@ -100,7 +99,7 @@ object MutableProjection
    * `inputSchema`.
    */
   def create(exprs: Seq[Expression], inputSchema: Seq[Attribute]): MutableProjection = {
-    create(bindReferences(exprs, inputSchema))
+    create(toBoundExprs(exprs, inputSchema))
   }
 }
 
@@ -163,47 +162,33 @@ object UnsafeProjection
    * `inputSchema`.
    */
   def create(exprs: Seq[Expression], inputSchema: Seq[Attribute]): UnsafeProjection = {
-    create(bindReferences(exprs, inputSchema))
+    create(toBoundExprs(exprs, inputSchema))
   }
 }
 
 /**
  * A projection that could turn UnsafeRow into GenericInternalRow
  */
-object SafeProjection extends CodeGeneratorWithInterpretedFallback[Seq[Expression], Projection] {
-
-  override protected def createCodeGeneratedObject(in: Seq[Expression]): Projection = {
-    GenerateSafeProjection.generate(in)
-  }
-
-  override protected def createInterpretedObject(in: Seq[Expression]): Projection = {
-    InterpretedSafeProjection.createProjection(in)
-  }
+object FromUnsafeProjection {
 
   /**
-   * Returns a SafeProjection for given StructType.
+   * Returns a Projection for given StructType.
    */
-  def create(schema: StructType): Projection = create(schema.fields.map(_.dataType))
-
-  /**
-   * Returns a SafeProjection for given Array of DataTypes.
-   */
-  def create(fields: Array[DataType]): Projection = {
-    createObject(fields.zipWithIndex.map(x => new BoundReference(x._2, x._1, true)))
+  def apply(schema: StructType): Projection = {
+    apply(schema.fields.map(_.dataType))
   }
 
   /**
-   * Returns a SafeProjection for given sequence of Expressions (bounded).
+   * Returns an UnsafeProjection for given Array of DataTypes.
    */
-  def create(exprs: Seq[Expression]): Projection = {
-    createObject(exprs)
+  def apply(fields: Seq[DataType]): Projection = {
+    create(fields.zipWithIndex.map(x => new BoundReference(x._2, x._1, true)))
   }
 
   /**
-   * Returns a SafeProjection for given sequence of Expressions, which will be bound to
-   * `inputSchema`.
+   * Returns a Projection for given sequence of Expressions (bounded).
    */
-  def create(exprs: Seq[Expression], inputSchema: Seq[Attribute]): Projection = {
-    create(bindReferences(exprs, inputSchema))
+  private def create(exprs: Seq[Expression]): Projection = {
+    GenerateSafeProjection.generate(exprs)
   }
 }

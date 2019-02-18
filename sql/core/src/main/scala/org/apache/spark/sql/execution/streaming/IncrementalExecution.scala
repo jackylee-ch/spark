@@ -22,7 +22,6 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{AnalysisException, SparkSession, Strategy}
-import org.apache.spark.sql.catalyst.QueryPlanningTracker
 import org.apache.spark.sql.catalyst.expressions.{CurrentBatchTimestamp, ExpressionWithRandomSeed}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.plans.physical.{AllTuples, ClusteredDistribution, HashPartitioning, SinglePartition}
@@ -42,7 +41,6 @@ class IncrementalExecution(
     logicalPlan: LogicalPlan,
     val outputMode: OutputMode,
     val checkpointLocation: String,
-    val queryId: UUID,
     val runId: UUID,
     val currentBatchId: Long,
     val offsetSeqMetadata: OffsetSeqMetadata)
@@ -75,8 +73,7 @@ class IncrementalExecution(
    * Walk the optimized logical plan and replace CurrentBatchTimestamp
    * with the desired literal
    */
-  override
-  lazy val optimizedPlan: LogicalPlan = tracker.measurePhase(QueryPlanningTracker.OPTIMIZATION) {
+  override lazy val optimizedPlan: LogicalPlan = {
     sparkSession.sessionState.optimizer.execute(withCachedData) transformAllExpressions {
       case ts @ CurrentBatchTimestamp(timestamp, _, _) =>
         logInfo(s"Current batch timestamp = $timestamp")

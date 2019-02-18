@@ -22,7 +22,6 @@ import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.codahale.metrics.Counter;
 import com.codahale.metrics.MetricSet;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -54,7 +53,6 @@ public class TransportServer implements Closeable {
   private ServerBootstrap bootstrap;
   private ChannelFuture channelFuture;
   private int port = -1;
-  private final PooledByteBufAllocator pooledAllocator;
   private NettyMemoryMetrics metrics;
 
   /**
@@ -70,13 +68,6 @@ public class TransportServer implements Closeable {
     this.context = context;
     this.conf = context.getConf();
     this.appRpcHandler = appRpcHandler;
-    if (conf.sharedByteBufAllocators()) {
-      this.pooledAllocator = NettyUtils.getSharedPooledByteBufAllocator(
-          conf.preferDirectBufsForSharedByteBufAllocators(), true /* allowCache */);
-    } else {
-      this.pooledAllocator = NettyUtils.createPooledByteBufAllocator(
-          conf.preferDirectBufs(), true /* allowCache */, conf.serverThreads());
-    }
     this.bootstraps = Lists.newArrayList(Preconditions.checkNotNull(bootstraps));
 
     boolean shouldClose = true;
@@ -104,15 +95,18 @@ public class TransportServer implements Closeable {
       NettyUtils.createEventLoop(ioMode, conf.serverThreads(), conf.getModuleName() + "-server");
     EventLoopGroup workerGroup = bossGroup;
 
+    PooledByteBufAllocator allocator = NettyUtils.createPooledByteBufAllocator(
+      conf.preferDirectBufs(), true /* allowCache */, conf.serverThreads());
+
     bootstrap = new ServerBootstrap()
       .group(bossGroup, workerGroup)
       .channel(NettyUtils.getServerChannelClass(ioMode))
-      .option(ChannelOption.ALLOCATOR, pooledAllocator)
+      .option(ChannelOption.ALLOCATOR, allocator)
       .option(ChannelOption.SO_REUSEADDR, !SystemUtils.IS_OS_WINDOWS)
-      .childOption(ChannelOption.ALLOCATOR, pooledAllocator);
+      .childOption(ChannelOption.ALLOCATOR, allocator);
 
     this.metrics = new NettyMemoryMetrics(
-      pooledAllocator, conf.getModuleName() + "-server", conf);
+      allocator, conf.getModuleName() + "-server", conf);
 
     if (conf.backLog() > 0) {
       bootstrap.option(ChannelOption.SO_BACKLOG, conf.backLog());
@@ -124,10 +118,6 @@ public class TransportServer implements Closeable {
 
     if (conf.sendBuf() > 0) {
       bootstrap.childOption(ChannelOption.SO_SNDBUF, conf.sendBuf());
-    }
-
-    if (conf.enableTcpKeepAlive()) {
-      bootstrap.childOption(ChannelOption.SO_KEEPALIVE, true);
     }
 
     bootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
@@ -168,9 +158,5 @@ public class TransportServer implements Closeable {
       bootstrap.config().childGroup().shutdownGracefully();
     }
     bootstrap = null;
-  }
-
-  public Counter getRegisteredConnections() {
-    return context.getRegisteredConnections();
   }
 }

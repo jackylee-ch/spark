@@ -18,7 +18,6 @@
 package org.apache.spark.sql.hive
 
 import java.io.File
-import java.util.Locale
 
 import scala.collection.JavaConverters._
 
@@ -51,29 +50,23 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
 
   private val maxRecordNum = 50
 
-  private def getConvertMetastoreConfName(format: String): String = {
-    format.toLowerCase(Locale.ROOT) match {
-      case "parquet" => HiveUtils.CONVERT_METASTORE_PARQUET.key
-      case "orc" => HiveUtils.CONVERT_METASTORE_ORC.key
-    }
+  private def getConvertMetastoreConfName(format: String): String = format.toLowerCase match {
+    case "parquet" => HiveUtils.CONVERT_METASTORE_PARQUET.key
+    case "orc" => HiveUtils.CONVERT_METASTORE_ORC.key
   }
 
-  private def getSparkCompressionConfName(format: String): String = {
-    format.toLowerCase(Locale.ROOT) match {
-      case "parquet" => SQLConf.PARQUET_COMPRESSION.key
-      case "orc" => SQLConf.ORC_COMPRESSION.key
-    }
+  private def getSparkCompressionConfName(format: String): String = format.toLowerCase match {
+    case "parquet" => SQLConf.PARQUET_COMPRESSION.key
+    case "orc" => SQLConf.ORC_COMPRESSION.key
   }
 
-  private def getHiveCompressPropName(format: String): String = {
-    format.toLowerCase(Locale.ROOT) match {
-      case "parquet" => ParquetOutputFormat.COMPRESSION
-      case "orc" => COMPRESS.getAttribute
-    }
+  private def getHiveCompressPropName(format: String): String = format.toLowerCase match {
+    case "parquet" => ParquetOutputFormat.COMPRESSION
+    case "orc" => COMPRESS.getAttribute
   }
 
   private def normalizeCodecName(format: String, name: String): String = {
-    format.toLowerCase(Locale.ROOT) match {
+    format.toLowerCase match {
       case "parquet" => ParquetOptions.getParquetCompressionCodecName(name)
       case "orc" => OrcOptions.getORCCompressionCodecName(name)
     }
@@ -81,7 +74,7 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
 
   private def getTableCompressionCodec(path: String, format: String): Seq[String] = {
     val hadoopConf = spark.sessionState.newHadoopConf()
-    val codecs = format.toLowerCase(Locale.ROOT) match {
+    val codecs = format.toLowerCase match {
       case "parquet" => for {
         footer <- readAllFootersWithoutSummaryFiles(new Path(path), hadoopConf)
         block <- footer.getParquetMetadata.getBlocks.asScala
@@ -229,8 +222,8 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
       tableCompressionCodecs: List[String])
       (assertionCompressionCodec: (Option[String], String, String, Long) => Unit): Unit = {
     withSQLConf(getConvertMetastoreConfName(format) -> convertMetastore.toString) {
-      tableCompressionCodecs.zipAll(compressionCodecs, null, "SNAPPY").foreach {
-        case (tableCompression, sessionCompressionCodec) =>
+      tableCompressionCodecs.foreach { tableCompression =>
+        compressionCodecs.foreach { sessionCompressionCodec =>
           withSQLConf(getSparkCompressionConfName(format) -> sessionCompressionCodec) {
             // 'tableCompression = null' means no table-level compression
             val compression = Option(tableCompression)
@@ -240,6 +233,7 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
                   compression, sessionCompressionCodec, realCompressionCodec, tableSize)
             }
           }
+        }
       }
     }
   }
@@ -261,10 +255,7 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
     }
   }
 
-  def checkForTableWithCompressProp(
-      format: String,
-      tableCompressCodecs: List[String],
-      sessionCompressCodecs: List[String]): Unit = {
+  def checkForTableWithCompressProp(format: String, compressCodecs: List[String]): Unit = {
     Seq(true, false).foreach { isPartitioned =>
       Seq(true, false).foreach { convertMetastore =>
         Seq(true, false).foreach { usingCTAS =>
@@ -273,10 +264,10 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
             isPartitioned,
             convertMetastore,
             usingCTAS,
-            compressionCodecs = sessionCompressCodecs,
-            tableCompressionCodecs = tableCompressCodecs) {
+            compressionCodecs = compressCodecs,
+            tableCompressionCodecs = compressCodecs) {
             case (tableCodec, sessionCodec, realCodec, tableSize) =>
-              val expectCodec = tableCodec.getOrElse(sessionCodec)
+              val expectCodec = tableCodec.get
               assert(expectCodec == realCodec)
               assert(checkTableSize(
                 format, expectCodec, isPartitioned, convertMetastore, usingCTAS, tableSize))
@@ -286,22 +277,36 @@ class CompressionCodecSuite extends TestHiveSingleton with ParquetTest with Befo
     }
   }
 
+  def checkForTableWithoutCompressProp(format: String, compressCodecs: List[String]): Unit = {
+    Seq(true, false).foreach { isPartitioned =>
+      Seq(true, false).foreach { convertMetastore =>
+        Seq(true, false).foreach { usingCTAS =>
+          checkTableCompressionCodecForCodecs(
+            format,
+            isPartitioned,
+            convertMetastore,
+            usingCTAS,
+            compressionCodecs = compressCodecs,
+            tableCompressionCodecs = List(null)) {
+            case (tableCodec, sessionCodec, realCodec, tableSize) =>
+              // Always expect session-level take effect
+              assert(sessionCodec == realCodec)
+              assert(checkTableSize(
+                format, sessionCodec, isPartitioned, convertMetastore, usingCTAS, tableSize))
+          }
+        }
+      }
+    }
+  }
+
   test("both table-level and session-level compression are set") {
-    checkForTableWithCompressProp("parquet",
-      tableCompressCodecs = List("UNCOMPRESSED", "SNAPPY", "GZIP"),
-      sessionCompressCodecs = List("SNAPPY", "GZIP", "SNAPPY"))
-    checkForTableWithCompressProp("orc",
-      tableCompressCodecs = List("NONE", "SNAPPY", "ZLIB"),
-      sessionCompressCodecs = List("SNAPPY", "ZLIB", "SNAPPY"))
+    checkForTableWithCompressProp("parquet", List("UNCOMPRESSED", "SNAPPY", "GZIP"))
+    checkForTableWithCompressProp("orc", List("NONE", "SNAPPY", "ZLIB"))
   }
 
   test("table-level compression is not set but session-level compressions is set ") {
-    checkForTableWithCompressProp("parquet",
-      tableCompressCodecs = List.empty,
-      sessionCompressCodecs = List("UNCOMPRESSED", "SNAPPY", "GZIP"))
-    checkForTableWithCompressProp("orc",
-      tableCompressCodecs = List.empty,
-      sessionCompressCodecs = List("NONE", "SNAPPY", "ZLIB"))
+    checkForTableWithoutCompressProp("parquet", List("UNCOMPRESSED", "SNAPPY", "GZIP"))
+    checkForTableWithoutCompressProp("orc", List("NONE", "SNAPPY", "ZLIB"))
   }
 
   def checkTableWriteWithCompressionCodecs(format: String, compressCodecs: List[String]): Unit = {

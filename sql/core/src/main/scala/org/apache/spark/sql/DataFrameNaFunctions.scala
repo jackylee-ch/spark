@@ -22,17 +22,18 @@ import java.util.Locale
 
 import scala.collection.JavaConverters._
 
-import org.apache.spark.annotation.Stable
+import org.apache.spark.annotation.InterfaceStability
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+
 
 /**
  * Functionality for working with missing data in `DataFrame`s.
  *
  * @since 1.3.1
  */
-@Stable
+@InterfaceStability.Stable
 final class DataFrameNaFunctions private[sql](df: DataFrame) {
 
   /**

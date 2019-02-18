@@ -22,3 +22,10 @@ private[spark] case class KubernetesDriverSpec(
     pod: SparkPod,
     driverKubernetesResources: Seq[HasMetadata],
     systemProperties: Map[String, String])
+
+private[spark] object KubernetesDriverSpec {
+  def initialSpec(initialProps: Map[String, String]): KubernetesDriverSpec = KubernetesDriverSpec(
+    SparkPod.initialPod(),
+    Seq.empty,
+    initialProps)
+}

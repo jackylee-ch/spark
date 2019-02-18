@@ -142,7 +142,7 @@ public class TColumnValue extends org.apache.thrift.TUnion<TColumnValue, TColumn
     super();
   }
 
-  public TColumnValue(TColumnValue._Fields setField, Object value) {
+  public TColumnValue(_Fields setField, Object value) {
     super(setField, value);
   }
 

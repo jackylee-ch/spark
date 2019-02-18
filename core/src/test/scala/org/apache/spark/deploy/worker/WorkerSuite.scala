@@ -22,7 +22,7 @@ import java.util.function.Supplier
 
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
-import org.mockito.ArgumentMatchers.any
+import org.mockito.Matchers._
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
@@ -32,8 +32,6 @@ import org.apache.spark.{SecurityManager, SparkConf, SparkFunSuite}
 import org.apache.spark.deploy.{Command, ExecutorState, ExternalShuffleService}
 import org.apache.spark.deploy.DeployMessages.{DriverStateChanged, ExecutorStateChanged}
 import org.apache.spark.deploy.master.DriverState
-import org.apache.spark.internal.config
-import org.apache.spark.internal.config.Worker._
 import org.apache.spark.rpc.{RpcAddress, RpcEnv}
 
 class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
@@ -102,7 +100,7 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
 
   test("test clearing of finishedExecutors (small number of executors)") {
     val conf = new SparkConf()
-    conf.set(WORKER_UI_RETAINED_EXECUTORS, 2)
+    conf.set("spark.worker.ui.retainedExecutors", 2.toString)
     val worker = makeWorker(conf)
     // initialize workers
     for (i <- 0 until 5) {
@@ -126,7 +124,7 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
 
   test("test clearing of finishedExecutors (more executors)") {
     val conf = new SparkConf()
-    conf.set(WORKER_UI_RETAINED_EXECUTORS, 30)
+    conf.set("spark.worker.ui.retainedExecutors", 30.toString)
     val worker = makeWorker(conf)
     // initialize workers
     for (i <- 0 until 50) {
@@ -159,7 +157,7 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
 
   test("test clearing of finishedDrivers (small number of drivers)") {
     val conf = new SparkConf()
-    conf.set(WORKER_UI_RETAINED_DRIVERS, 2)
+    conf.set("spark.worker.ui.retainedDrivers", 2.toString)
     val worker = makeWorker(conf)
     // initialize workers
     for (i <- 0 until 5) {
@@ -183,7 +181,7 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
 
   test("test clearing of finishedDrivers (more drivers)") {
     val conf = new SparkConf()
-    conf.set(WORKER_UI_RETAINED_DRIVERS, 30)
+    conf.set("spark.worker.ui.retainedDrivers", 30.toString)
     val worker = makeWorker(conf)
     // initialize workers
     for (i <- 0 until 50) {
@@ -225,7 +223,7 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
   }
 
   private def testCleanupFilesWithConfig(value: Boolean) = {
-    val conf = new SparkConf().set(config.STORAGE_CLEANUP_FILES_AFTER_EXECUTOR_EXIT, value)
+    val conf = new SparkConf().set("spark.storage.cleanupFilesAfterExecutorExit", value.toString)
 
     val cleanupCalled = new AtomicBoolean(false)
     when(shuffleService.executorRemoved(any[String], any[String])).thenAnswer(new Answer[Unit] {

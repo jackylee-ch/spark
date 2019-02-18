@@ -81,7 +81,7 @@ if (!(Test-Path $tools)) {
 # ========================== Maven
 Push-Location $tools
 
-$mavenVer = "3.6.0"
+$mavenVer = "3.5.4"
 Start-FileDownload "https://archive.apache.org/dist/maven/maven-3/$mavenVer/binaries/apache-maven-$mavenVer-bin.zip" "maven.zip"
 
 # extract
@@ -95,8 +95,7 @@ $env:MAVEN_OPTS = "-Xmx2g -XX:ReservedCodeCacheSize=512m"
 Pop-Location
 
 # ========================== Hadoop bin package
-# This must match the version at https://github.com/steveloughran/winutils/tree/master/hadoop-2.7.1
-$hadoopVer = "2.7.1"
+$hadoopVer = "2.6.4"
 $hadoopPath = "$tools\hadoop"
 if (!(Test-Path $hadoopPath)) {
     New-Item -ItemType Directory -Force -Path $hadoopPath | Out-Null
@@ -115,8 +114,8 @@ $env:Path += ";$env:HADOOP_HOME\bin"
 Pop-Location
 
 # ========================== R
-$rVer = "3.5.1"
-$rToolsVer = "3.5.1"
+$rVer = "3.4.1"
+$rToolsVer = "3.4.0"
 
 InstallR
 InstallRtools

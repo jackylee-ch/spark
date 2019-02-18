@@ -17,7 +17,7 @@
 
 package org.apache.spark
 
-import java.util.concurrent.{Semaphore, TimeUnit}
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -27,8 +27,6 @@ import scala.concurrent.duration._
 import org.scalatest.BeforeAndAfter
 import org.scalatest.Matchers
 
-import org.apache.spark.internal.config._
-import org.apache.spark.internal.config.Deploy._
 import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerTaskEnd, SparkListenerTaskStart}
 import org.apache.spark.util.ThreadUtils
 
@@ -53,7 +51,7 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
   }
 
   test("local mode, FIFO scheduler") {
-    val conf = new SparkConf().set(SCHEDULER_MODE, "FIFO")
+    val conf = new SparkConf().set("spark.scheduler.mode", "FIFO")
     sc = new SparkContext("local[2]", "test", conf)
     testCount()
     testTake()
@@ -62,9 +60,9 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
   }
 
   test("local mode, fair scheduler") {
-    val conf = new SparkConf().set(SCHEDULER_MODE, "FAIR")
+    val conf = new SparkConf().set("spark.scheduler.mode", "FAIR")
     val xmlPath = getClass.getClassLoader.getResource("fairscheduler.xml").getFile()
-    conf.set(SCHEDULER_ALLOCATION_FILE, xmlPath)
+    conf.set("spark.scheduler.allocation.file", xmlPath)
     sc = new SparkContext("local[2]", "test", conf)
     testCount()
     testTake()
@@ -73,7 +71,7 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
   }
 
   test("cluster mode, FIFO scheduler") {
-    val conf = new SparkConf().set(SCHEDULER_MODE, "FIFO")
+    val conf = new SparkConf().set("spark.scheduler.mode", "FIFO")
     sc = new SparkContext("local-cluster[2,1,1024]", "test", conf)
     testCount()
     testTake()
@@ -82,9 +80,9 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
   }
 
   test("cluster mode, fair scheduler") {
-    val conf = new SparkConf().set(SCHEDULER_MODE, "FAIR")
+    val conf = new SparkConf().set("spark.scheduler.mode", "FAIR")
     val xmlPath = getClass.getClassLoader.getResource("fairscheduler.xml").getFile()
-    conf.set(SCHEDULER_ALLOCATION_FILE, xmlPath)
+    conf.set("spark.scheduler.allocation.file", xmlPath)
     sc = new SparkContext("local-cluster[2,1,1024]", "test", conf)
     testCount()
     testTake()
@@ -218,8 +216,8 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
 
   test("task reaper kills JVM if killed tasks keep running for too long") {
     val conf = new SparkConf()
-      .set(TASK_REAPER_ENABLED, true)
-      .set(TASK_REAPER_KILL_TIMEOUT.key, "5s")
+      .set("spark.task.reaper.enabled", "true")
+      .set("spark.task.reaper.killTimeout", "5s")
     sc = new SparkContext("local-cluster[2,1,1024]", "test", conf)
 
     // Add a listener to release the semaphore once any tasks are launched.
@@ -255,10 +253,10 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
 
   test("task reaper will not kill JVM if spark.task.killTimeout == -1") {
     val conf = new SparkConf()
-      .set(TASK_REAPER_ENABLED, true)
-      .set(TASK_REAPER_KILL_TIMEOUT.key, "-1")
-      .set(TASK_REAPER_POLLING_INTERVAL.key, "1s")
-      .set(MAX_EXECUTOR_RETRIES, 1)
+      .set("spark.task.reaper.enabled", "true")
+      .set("spark.task.reaper.killTimeout", "-1")
+      .set("spark.task.reaper.PollingInterval", "1s")
+      .set("spark.deploy.maxExecutorRetries", "1")
     sc = new SparkContext("local-cluster[2,1,1024]", "test", conf)
 
     // Add a listener to release the semaphore once any tasks are launched.
@@ -273,8 +271,8 @@ class JobCancellationSuite extends SparkFunSuite with Matchers with BeforeAndAft
     val jobA = Future {
       sc.setJobGroup("jobA", "this is a job to be cancelled", interruptOnCancel = true)
       sc.parallelize(1 to 2, 2).map { i =>
-        val startTimeNs = System.nanoTime()
-        while (System.nanoTime() < startTimeNs + TimeUnit.SECONDS.toNanos(10)) { }
+        val startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() < startTime + 10000) { }
       }.count()
     }
 

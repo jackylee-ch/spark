@@ -23,7 +23,6 @@ import scala.collection.JavaConverters._
 
 import org.apache.spark.{JobExecutionStatus, SecurityManager, SparkConf, SparkContext}
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.UI._
 import org.apache.spark.scheduler._
 import org.apache.spark.status.AppStatusStore
 import org.apache.spark.status.api.v1._
@@ -51,7 +50,7 @@ private[spark] class SparkUI private (
   with Logging
   with UIRoot {
 
-  val killEnabled = sc.map(_.conf.get(UI_KILL_ENABLED)).getOrElse(false)
+  val killEnabled = sc.map(_.conf.getBoolean("spark.ui.killEnabled", true)).getOrElse(false)
 
   var appId: String = _
 
@@ -152,11 +151,12 @@ private[spark] abstract class SparkUITab(parent: SparkUI, prefix: String)
 }
 
 private[spark] object SparkUI {
+  val DEFAULT_PORT = 4040
   val STATIC_RESOURCE_DIR = "org/apache/spark/ui/static"
   val DEFAULT_POOL_NAME = "default"
 
   def getUIPort(conf: SparkConf): Int = {
-    conf.get(UI_PORT)
+    conf.getInt("spark.ui.port", SparkUI.DEFAULT_PORT)
   }
 
   /**

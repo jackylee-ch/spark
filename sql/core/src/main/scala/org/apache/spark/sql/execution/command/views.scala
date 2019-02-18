@@ -242,7 +242,6 @@ case class CreateViewCommand(
       storage = CatalogStorageFormat.empty,
       schema = aliasPlan(session, analyzedPlan).schema,
       properties = newProperties,
-      viewOriginalText = originalText,
       viewText = originalText,
       comment = comment
     )
@@ -300,7 +299,6 @@ case class AlterViewAsCommand(
     val updatedViewMeta = viewMeta.copy(
       schema = analyzedPlan.schema,
       properties = newProperties,
-      viewOriginalText = Some(originalText),
       viewText = Some(originalText))
 
     session.sessionState.catalog.alterTable(updatedViewMeta)

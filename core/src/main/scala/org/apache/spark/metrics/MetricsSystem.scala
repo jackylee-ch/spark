@@ -94,13 +94,11 @@ private[spark] class MetricsSystem private (
 
   metricsConfig.initialize()
 
-  def start(registerStaticSources: Boolean = true) {
+  def start() {
     require(!running, "Attempting to start a MetricsSystem that is already running")
     running = true
-    if (registerStaticSources) {
-      StaticSources.allSources.foreach(registerSource)
-      registerSources()
-    }
+    StaticSources.allSources.foreach(registerSource)
+    registerSources()
     registerSinks()
     sinks.foreach(_.start)
   }
@@ -130,7 +128,7 @@ private[spark] class MetricsSystem private (
   private[spark] def buildRegistryName(source: Source): String = {
     val metricsNamespace = conf.get(METRICS_NAMESPACE).orElse(conf.getOption("spark.app.id"))
 
-    val executorId = conf.get(EXECUTOR_ID)
+    val executorId = conf.getOption("spark.executor.id")
     val defaultName = MetricRegistry.name(source.sourceName)
 
     if (instance == "driver" || instance == "executor") {
@@ -181,7 +179,7 @@ private[spark] class MetricsSystem private (
     sourceConfigs.foreach { kv =>
       val classPath = kv._2.getProperty("class")
       try {
-        val source = Utils.classForName(classPath).getConstructor().newInstance()
+        val source = Utils.classForName(classPath).newInstance()
         registerSource(source.asInstanceOf[Source])
       } catch {
         case e: Exception => logError("Source class " + classPath + " cannot be instantiated", e)

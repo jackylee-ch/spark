@@ -20,7 +20,6 @@ package org.apache.spark.scheduler
 import scala.util.Random
 
 import org.apache.spark._
-import org.apache.spark.internal.config.Tests.TEST_NO_STAGE_RETRY
 
 class BarrierTaskContextSuite extends SparkFunSuite with LocalSparkContext {
 
@@ -77,7 +76,7 @@ class BarrierTaskContextSuite extends SparkFunSuite with LocalSparkContext {
   test("throw exception on barrier() call timeout") {
     val conf = new SparkConf()
       .set("spark.barrier.sync.timeout", "1")
-      .set(TEST_NO_STAGE_RETRY, true)
+      .set("spark.test.noStageRetry", "true")
       .setMaster("local-cluster[4, 1, 1024]")
       .setAppName("test-cluster")
     sc = new SparkContext(conf)
@@ -102,7 +101,7 @@ class BarrierTaskContextSuite extends SparkFunSuite with LocalSparkContext {
   test("throw exception if barrier() call doesn't happen on every task") {
     val conf = new SparkConf()
       .set("spark.barrier.sync.timeout", "1")
-      .set(TEST_NO_STAGE_RETRY, true)
+      .set("spark.test.noStageRetry", "true")
       .setMaster("local-cluster[4, 1, 1024]")
       .setAppName("test-cluster")
     sc = new SparkContext(conf)
@@ -125,7 +124,7 @@ class BarrierTaskContextSuite extends SparkFunSuite with LocalSparkContext {
   test("throw exception if the number of barrier() calls are not the same on every task") {
     val conf = new SparkConf()
       .set("spark.barrier.sync.timeout", "1")
-      .set(TEST_NO_STAGE_RETRY, true)
+      .set("spark.test.noStageRetry", "true")
       .setMaster("local-cluster[4, 1, 1024]")
       .setAppName("test-cluster")
     sc = new SparkContext(conf)

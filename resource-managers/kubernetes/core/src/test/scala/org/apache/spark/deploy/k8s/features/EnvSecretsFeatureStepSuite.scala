@@ -16,12 +16,12 @@
  */
 package org.apache.spark.deploy.k8s.features
 
-import scala.collection.JavaConverters._
+import io.fabric8.kubernetes.api.model.PodBuilder
 
-import org.apache.spark.SparkFunSuite
+import org.apache.spark.{SparkConf, SparkFunSuite}
 import org.apache.spark.deploy.k8s._
 
-class EnvSecretsFeatureStepSuite extends SparkFunSuite {
+class EnvSecretsFeatureStepSuite extends SparkFunSuite{
   private val KEY_REF_NAME_FOO = "foo"
   private val KEY_REF_NAME_BAR = "bar"
   private val KEY_REF_KEY_FOO = "key_foo"
@@ -34,14 +34,28 @@ class EnvSecretsFeatureStepSuite extends SparkFunSuite {
     val envVarsToKeys = Map(
       ENV_NAME_BAR -> s"${KEY_REF_NAME_BAR}:${KEY_REF_KEY_BAR}",
       ENV_NAME_FOO -> s"${KEY_REF_NAME_FOO}:${KEY_REF_KEY_FOO}")
-    val kubernetesConf = KubernetesTestConf.createDriverConf(
-      secretEnvNamesToKeyRefs = envVarsToKeys)
+    val sparkConf = new SparkConf(false)
+    val kubernetesConf = KubernetesConf(
+      sparkConf,
+      KubernetesExecutorSpecificConf("1", Some(new PodBuilder().build())),
+      "resource-name-prefix",
+      "app-id",
+      Map.empty,
+      Map.empty,
+      Map.empty,
+      envVarsToKeys,
+      Map.empty,
+      Nil,
+      Seq.empty[String])
 
     val step = new EnvSecretsFeatureStep(kubernetesConf)
-    val container = step.configurePod(baseDriverPod).container
-    val containerEnvKeys = container.getEnv.asScala.map { v => v.getName }.toSet
-    envVarsToKeys.keys.foreach { envName =>
-      assert(containerEnvKeys.contains(envName))
+    val driverContainerWithEnvSecrets = step.configurePod(baseDriverPod).container
+
+    val expectedVars =
+      Seq(s"${ENV_NAME_BAR}", s"${ENV_NAME_FOO}")
+
+    expectedVars.foreach { envName =>
+      assert(KubernetesFeaturesTestUtils.containerHasEnvVar(driverContainerWithEnvSecrets, envName))
     }
   }
 }

@@ -808,8 +808,7 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
     // visible to mutableURLClassLoader
     val loader = new MutableURLClassLoader(
       Array(jar), appClassLoader)
-    assert(loader.loadClass("testClz").getConstructor().newInstance().toString ===
-      "testStringValue")
+    assert(loader.loadClass("testClz").newInstance().toString == "testStringValue")
 
     // create and serialize Array[testClz]
     // scalastyle:off classforname

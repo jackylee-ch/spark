@@ -206,9 +206,7 @@ class TungstenAggregationIterator(
           buffer = hashMap.getAggregationBufferFromUnsafeRow(groupingKey)
           if (buffer == null) {
             // failed to allocate the first page
-            // scalastyle:off throwerror
             throw new SparkOutOfMemoryError("No enough memory for aggregation")
-            // scalastyle:on throwerror
           }
         }
         processRow(buffer, newInput)
@@ -387,7 +385,7 @@ class TungstenAggregationIterator(
     metrics.incPeakExecutionMemory(maxMemory)
 
     // Updating average hashmap probe
-    avgHashProbe.set(hashMap.getAvgHashProbeBucketListIterations)
+    avgHashProbe.set(hashMap.getAverageProbesPerLookup())
   })
 
   ///////////////////////////////////////////////////////////////////////////

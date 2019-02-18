@@ -19,7 +19,6 @@ package org.apache.spark.sql.hive.thriftserver
 
 import java.io._
 import java.util.{ArrayList => JArrayList, Locale}
-import java.util.concurrent.TimeUnit
 
 import scala.collection.JavaConverters._
 
@@ -41,10 +40,10 @@ import org.apache.thrift.transport.TSocket
 
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.deploy.security.HiveDelegationTokenProvider
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.hive.HiveUtils
-import org.apache.spark.sql.hive.security.HiveDelegationTokenProvider
 import org.apache.spark.util.ShutdownHookManager
 
 /**
@@ -344,10 +343,10 @@ private[hive] class SparkSQLCLIDriver extends CliDriver with Logging {
     }
     if (tokens(0).toLowerCase(Locale.ROOT).equals("source") ||
       cmd_trimmed.startsWith("!") || isRemoteMode) {
-      val startTimeNs = System.nanoTime()
+      val start = System.currentTimeMillis()
       super.processCmd(cmd)
-      val endTimeNs = System.nanoTime()
-      val timeTaken: Double = TimeUnit.NANOSECONDS.toMillis(endTimeNs - startTimeNs) / 1000.0
+      val end = System.currentTimeMillis()
+      val timeTaken: Double = (end - start) / 1000.0
       console.printInfo(s"Time taken: $timeTaken seconds")
       0
     } else {
@@ -365,13 +364,13 @@ private[hive] class SparkSQLCLIDriver extends CliDriver with Logging {
           driver.init()
           val out = sessionState.out
           val err = sessionState.err
-          val startTimeNs: Long = System.nanoTime()
+          val start: Long = System.currentTimeMillis()
           if (sessionState.getIsVerbose) {
             out.println(cmd)
           }
           val rc = driver.run(cmd)
-          val endTimeNs = System.nanoTime()
-          val timeTaken: Double = TimeUnit.NANOSECONDS.toMillis(endTimeNs - startTimeNs) / 1000.0
+          val end = System.currentTimeMillis()
+          val timeTaken: Double = (end - start) / 1000.0
 
           ret = rc.getResponseCode
           if (ret != 0) {

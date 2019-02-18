@@ -25,14 +25,11 @@ private[spark]
 abstract class CompletionIterator[ +A, +I <: Iterator[A]](sub: I) extends Iterator[A] {
 
   private[this] var completed = false
-  private[this] var iter = sub
-  def next(): A = iter.next()
+  def next(): A = sub.next()
   def hasNext: Boolean = {
-    val r = iter.hasNext
+    val r = sub.hasNext
     if (!r && !completed) {
       completed = true
-      // reassign to release resources of highly resource consuming iterators early
-      iter = Iterator.empty.asInstanceOf[I]
       completion()
     }
     r

@@ -36,7 +36,7 @@ public abstract class AbstractService implements Service {
   /**
    * Service state: initially {@link STATE#NOTINITED}.
    */
-  private Service.STATE state = STATE.NOTINITED;
+  private STATE state = STATE.NOTINITED;
 
   /**
    * Service name.
@@ -70,7 +70,7 @@ public abstract class AbstractService implements Service {
   }
 
   @Override
-  public synchronized Service.STATE getServiceState() {
+  public synchronized STATE getServiceState() {
     return state;
   }
 
@@ -159,7 +159,7 @@ public abstract class AbstractService implements Service {
    *           if the service state is different from
    *           the desired state
    */
-  private void ensureCurrentState(Service.STATE currentState) {
+  private void ensureCurrentState(STATE currentState) {
     ServiceOperations.ensureCurrentState(state, currentState);
   }
 
@@ -173,7 +173,7 @@ public abstract class AbstractService implements Service {
    * @param newState
    *          new service state
    */
-  private void changeState(Service.STATE newState) {
+  private void changeState(STATE newState) {
     state = newState;
     // notify listeners
     for (ServiceStateChangeListener l : listeners) {

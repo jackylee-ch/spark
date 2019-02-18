@@ -186,57 +186,10 @@ Security options for the Spark History Server are covered more detail in the
     </td>
   </tr>
   <tr>
-    <td>spark.history.fs.endEventReparseChunkSize</td>
-    <td>1m</td>
-    <td>
-      How many bytes to parse at the end of log files looking for the end event. 
-      This is used to speed up generation of application listings by skipping unnecessary
-      parts of event log files. It can be disabled by setting this config to 0.
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.fs.inProgressOptimization.enabled</td>
-    <td>true</td>
-    <td>
-      Enable optimized handling of in-progress logs. This option may leave finished
-      applications that fail to rename their event logs listed as in-progress.
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.fs.driverlog.cleaner.enabled</td>
-    <td><code>spark.history.fs.cleaner.enabled</code></td>
-    <td>
-      Specifies whether the History Server should periodically clean up driver logs from storage.
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.fs.driverlog.cleaner.interval</td>
-    <td><code>spark.history.fs.cleaner.interval</code></td>
-    <td>
-      How often the filesystem driver log cleaner checks for files to delete.
-      Files are only deleted if they are older than <code>spark.history.fs.driverlog.cleaner.maxAge</code>
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.fs.driverlog.cleaner.maxAge</td>
-    <td><code>spark.history.fs.cleaner.maxAge</code></td>
-    <td>
-      Driver log files older than this will be deleted when the driver log cleaner runs.
-    </td>
-  </tr>
-  <tr>
     <td>spark.history.fs.numReplayThreads</td>
     <td>25% of available cores</td>
     <td>
       Number of threads that will be used by history server to process event logs.
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.store.maxDiskUsage</td>
-    <td>10g</td>
-    <td>
-      Maximum disk usage for the local directory where the cache application history information
-      are stored.
     </td>
   </tr>
   <tr>
@@ -248,30 +201,6 @@ Security options for the Spark History Server are covered more detail in the
         written to disk will be re-used in the event of a history server restart.
     </td>
   </tr>
-  <tr>
-    <td>spark.history.custom.executor.log.url</td>
-    <td>(none)</td>
-    <td>
-        Specifies custom spark executor log URL for supporting external log service instead of using cluster
-        managers' application log URLs in the history server. Spark will support some path variables via patterns
-        which can vary on cluster manager. Please check the documentation for your cluster manager to
-        see which patterns are supported, if any. This configuration has no effect on a live application, it only
-        affects the history server.
-        <p/>
-        For now, only YARN mode supports this configuration
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.custom.executor.log.url.applyIncompleteApplication</td>
-    <td>false</td>
-    <td>
-        Specifies whether to apply custom spark executor log URL to incomplete applications as well.
-        If executor logs for running applications should be provided as origin log URLs, set this to `false`.
-        Please note that incomplete applications may include applications which didn't shutdown gracefully.
-        Even this is set to `true`, this configuration has no effect on a live application, it only affects the history server.
-    </td>
-  </tr>
-
 </table>
 
 Note that in all of these UIs, the tables are sortable by clicking their headers,
@@ -659,7 +588,6 @@ set of sinks to which metrics are reported. The following instances are currentl
 * `driver`: The Spark driver process (the process in which your SparkContext is created).
 * `shuffleService`: The Spark shuffle service.
 * `applicationMaster`: The Spark ApplicationMaster when running on YARN.
-* `mesos_cluster`: The Spark cluster scheduler when running on Mesos.
 
 Each instance can report to zero or more _sinks_. Sinks are contained in the
 `org.apache.spark.metrics.sink` package:

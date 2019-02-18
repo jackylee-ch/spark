@@ -12,7 +12,7 @@ redirect_from: "building-with-maven.html"
 ## Apache Maven
 
 The Maven-based build is the build of reference for Apache Spark.
-Building Spark using Maven requires Maven 3.6.0 and Java 8.
+Building Spark using Maven requires Maven 3.3.9 or newer and Java 8+.
 Note that support for Java 7 was removed as of Spark 2.2.0.
 
 ### Setting up Maven's Memory Usage
@@ -49,20 +49,25 @@ To create a Spark distribution like those distributed by the
 to be runnable, use `./dev/make-distribution.sh` in the project root directory. It can be configured
 with Maven profile settings and so on like the direct Maven build. Example:
 
-    ./dev/make-distribution.sh --name custom-spark --pip --r --tgz -Psparkr -Phive -Phive-thriftserver -Pmesos -Pyarn -Pkubernetes
+    ./dev/make-distribution.sh --name custom-spark --pip --r --tgz -Psparkr -Phadoop-2.7 -Phive -Phive-thriftserver -Pmesos -Pyarn -Pkubernetes
 
 This will build Spark distribution along with Python pip and R packages. For more information on usage, run `./dev/make-distribution.sh --help`
 
 ## Specifying the Hadoop Version and Enabling YARN
 
 You can specify the exact version of Hadoop to compile against through the `hadoop.version` property. 
+If unset, Spark will build against Hadoop 2.6.X by default.
 
 You can enable the `yarn` profile and optionally set the `yarn.version` property if it is different 
 from `hadoop.version`.
 
-Example:
+Examples:
 
-    ./build/mvn -Pyarn -Dhadoop.version=2.8.5 -DskipTests clean package
+    # Apache Hadoop 2.6.X
+    ./build/mvn -Pyarn -DskipTests clean package
+
+    # Apache Hadoop 2.7.X and later
+    ./build/mvn -Pyarn -Phadoop-2.7 -Dhadoop.version=2.7.3 -DskipTests clean package
 
 ## Building With Hive and JDBC Support
 
@@ -89,6 +94,22 @@ like ZooKeeper and Hadoop itself.
 ## Building with Kubernetes support
 
     ./build/mvn -Pkubernetes -DskipTests clean package
+    
+## Building with Kafka 0.8 support
+
+Kafka 0.8 support must be explicitly enabled with the `kafka-0-8` profile.
+Note: Kafka 0.8 support is deprecated as of Spark 2.3.0.
+
+    ./build/mvn -Pkafka-0-8 -DskipTests clean package
+
+Kafka 0.10 support is still automatically built.
+
+## Building with Flume support
+
+Apache Flume support must be explicitly enabled with the `flume` profile.
+Note: Flume support is deprecated as of Spark 2.3.0.
+
+    ./build/mvn -Pflume -DskipTests clean package
 
 ## Building submodules individually
 
@@ -96,9 +117,9 @@ It's possible to build Spark submodules using the `mvn -pl` option.
 
 For instance, you can build the Spark Streaming module using:
 
-    ./build/mvn -pl :spark-streaming_{{site.SCALA_BINARY_VERSION}} clean install
+    ./build/mvn -pl :spark-streaming_2.11 clean install
 
-where `spark-streaming_{{site.SCALA_BINARY_VERSION}}` is the `artifactId` as defined in `streaming/pom.xml` file.
+where `spark-streaming_2.11` is the `artifactId` as defined in `streaming/pom.xml` file.
 
 ## Continuous Compilation
 
@@ -137,14 +158,6 @@ can be set to control the SBT build. For example:
 To avoid the overhead of launching sbt each time you need to re-compile, you can launch sbt
 in interactive mode by running `build/sbt`, and then run all build commands at the command
 prompt.
-
-### Setting up SBT's Memory Usage
-Configure the JVM options for SBT in `.jvmopts` at the project root, for example:
-
-    -Xmx2g
-    -XX:ReservedCodeCacheSize=512m
-
-For the meanings of these two options, please carefully read the [Setting up Maven's Memory Usage section](http://spark.apache.org/docs/latest/building-spark.html#setting-up-mavens-memory-usage).
 
 ## Speeding up Compilation
 
@@ -238,7 +251,7 @@ Once installed, the `docker` service needs to be started, if not already running
 On Linux, this can be done by `sudo service docker start`.
 
     ./build/mvn install -DskipTests
-    ./build/mvn test -Pdocker-integration-tests -pl :spark-docker-integration-tests_{{site.SCALA_BINARY_VERSION}}
+    ./build/mvn test -Pdocker-integration-tests -pl :spark-docker-integration-tests_2.11
 
 or
 
@@ -246,44 +259,16 @@ or
 
 ## Change Scala Version
 
-To build Spark using another supported Scala version, please change the major Scala version using (e.g. 2.11):
+To build Spark using another supported Scala version, please change the major Scala version using (e.g. 2.12):
 
-    ./dev/change-scala-version.sh 2.11
+    ./dev/change-scala-version.sh 2.12
 
-For Maven, please enable the profile (e.g. 2.11):
+For Maven, please enable the profile (e.g. 2.12):
 
-    ./build/mvn -Pscala-2.11 compile
+    ./build/mvn -Pscala-2.12 compile
 
-For SBT, specify a complete scala version using (e.g. 2.11.12):
+For SBT, specify a complete scala version using (e.g. 2.12.6):
 
-    ./build/sbt -Dscala.version=2.11.12
+    ./build/sbt -Dscala.version=2.12.6
 
 Otherwise, the sbt-pom-reader plugin will use the `scala.version` specified in the spark-parent pom.
-
-## Running Jenkins tests with Github Enterprise
-
-To run tests with Jenkins:
-
-    ./dev/run-tests-jenkins
-
-If use an individual repository or a repository on GitHub Enterprise, export below environment variables before running above command.
-
-### Related environment variables
-
-<table class="table">
-<tr><th>Variable Name</th><th>Default</th><th>Meaning</th></tr>
-<tr>
-  <td><code>SPARK_PROJECT_URL</code></td>
-  <td>https://github.com/apache/spark</td>
-  <td>
-    The Spark project URL of GitHub Enterprise.
-  </td>
-</tr>
-<tr>
-  <td><code>GITHUB_API_BASE</code></td>
-  <td>https://api.github.com/repos/apache/spark</td>
-  <td>
-    The Spark project API server URL of GitHub Enterprise.
-  </td>
-</tr>
-</table>

@@ -38,7 +38,6 @@ import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.input.FixedLengthBinaryInputFormat
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.UI._
 import org.apache.spark.rdd.{RDD, RDDOperationScope}
 import org.apache.spark.scheduler.LiveListenerBus
 import org.apache.spark.serializer.SerializationDebugger
@@ -189,7 +188,7 @@ class StreamingContext private[streaming] (
   private[streaming] val progressListener = new StreamingJobProgressListener(this)
 
   private[streaming] val uiTab: Option[StreamingTab] =
-    if (conf.get(UI_ENABLED)) {
+    if (conf.getBoolean("spark.ui.enabled", true)) {
       Some(new StreamingTab(this))
     } else {
       None
@@ -538,7 +537,7 @@ class StreamingContext private[streaming] (
         ExecutorAllocationManager.isDynamicAllocationEnabled(conf)) {
       logWarning("Dynamic Allocation is enabled for this application. " +
         "Enabling Dynamic allocation for Spark Streaming applications can cause data loss if " +
-        "Write Ahead Log is not enabled for non-replayable sources. " +
+        "Write Ahead Log is not enabled for non-replayable sources like Flume. " +
         "See the programming guide for details on how to enable the Write Ahead Log.")
     }
   }

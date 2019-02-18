@@ -26,8 +26,8 @@ import scala.language.postfixOps
 
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapreduce.TaskType
-import org.mockito.ArgumentMatchers.{any, eq => meq}
-import org.mockito.Mockito.{doAnswer, spy, times, verify}
+import org.mockito.Matchers
+import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
 import org.scalatest.BeforeAndAfter
@@ -71,8 +71,6 @@ import org.apache.spark.util.{ThreadUtils, Utils}
  */
 class OutputCommitCoordinatorSuite extends SparkFunSuite with BeforeAndAfter {
 
-  private def doReturn(value: Any) = org.mockito.Mockito.doReturn(value, Seq.empty: _*)
-
   var outputCommitCoordinator: OutputCommitCoordinator = null
   var tempDir: File = null
   var sc: SparkContext = null
@@ -105,7 +103,7 @@ class OutputCommitCoordinatorSuite extends SparkFunSuite with BeforeAndAfter {
         invoke.callRealMethod()
         mockTaskScheduler.backend.reviveOffers()
       }
-    }).when(mockTaskScheduler).submitTasks(any())
+    }).when(mockTaskScheduler).submitTasks(Matchers.any())
 
     doAnswer(new Answer[TaskSetManager]() {
       override def answer(invoke: InvocationOnMock): TaskSetManager = {
@@ -125,7 +123,7 @@ class OutputCommitCoordinatorSuite extends SparkFunSuite with BeforeAndAfter {
           }
         }
       }
-    }).when(mockTaskScheduler).createTaskSetManager(any(), any())
+    }).when(mockTaskScheduler).createTaskSetManager(Matchers.any(), Matchers.any())
 
     sc.taskScheduler = mockTaskScheduler
     val dagSchedulerWithMockTaskScheduler = new DAGScheduler(sc, mockTaskScheduler)
@@ -156,7 +154,7 @@ class OutputCommitCoordinatorSuite extends SparkFunSuite with BeforeAndAfter {
   test("Job should not complete if all commits are denied") {
     // Create a mock OutputCommitCoordinator that denies all attempts to commit
     doReturn(false).when(outputCommitCoordinator).handleAskPermissionToCommit(
-      any(), any(), any(), any())
+      Matchers.any(), Matchers.any(), Matchers.any(), Matchers.any())
     val rdd: RDD[Int] = sc.parallelize(Seq(1), 1)
     def resultHandler(x: Int, y: Unit): Unit = {}
     val futureAction: SimpleFutureAction[Unit] = sc.submitJob[Int, Unit, Unit](rdd,
@@ -270,8 +268,8 @@ class OutputCommitCoordinatorSuite extends SparkFunSuite with BeforeAndAfter {
     assert(retriedStage.size === 1)
     assert(sc.dagScheduler.outputCommitCoordinator.isEmpty)
     verify(sc.env.outputCommitCoordinator, times(2))
-      .stageStart(meq(retriedStage.head), any())
-    verify(sc.env.outputCommitCoordinator).stageEnd(meq(retriedStage.head))
+      .stageStart(Matchers.eq(retriedStage.head), Matchers.any())
+    verify(sc.env.outputCommitCoordinator).stageEnd(Matchers.eq(retriedStage.head))
   }
 }
 

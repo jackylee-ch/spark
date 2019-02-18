@@ -175,7 +175,7 @@ private[v1] class OneApplicationAttemptResource extends AbstractApplicationResou
   def getAttempt(): ApplicationAttemptInfo = {
     uiRoot.getApplicationInfo(appId)
       .flatMap { app =>
-        app.attempts.find(_.attemptId.contains(attemptId))
+        app.attempts.filter(_.attemptId == attemptId).headOption
       }
       .getOrElse {
         throw new NotFoundException(s"unknown app $appId, attempt $attemptId")

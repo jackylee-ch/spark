@@ -21,7 +21,6 @@ import com.esotericsoftware.kryo.{Kryo, Serializer}
 import com.esotericsoftware.kryo.io.{Input, Output}
 
 import org.apache.spark.SparkConf
-import org.apache.spark.internal.config.Kryo._
 import org.apache.spark.serializer.KryoRegistrator
 import org.apache.spark.sql.test.SharedSQLContext
 
@@ -34,7 +33,7 @@ class DatasetSerializerRegistratorSuite extends QueryTest with SharedSQLContext 
 
   override protected def sparkConf: SparkConf = {
     // Make sure we use the KryoRegistrator
-    super.sparkConf.set(KRYO_USER_REGISTRATORS, TestRegistrator().getClass.getCanonicalName)
+    super.sparkConf.set("spark.kryo.registrator", TestRegistrator().getClass.getCanonicalName)
   }
 
   test("Kryo registrator") {

@@ -22,7 +22,6 @@ import javax.servlet.http.HttpServletRequest
 import scala.collection.JavaConverters._
 
 import org.apache.spark.JobExecutionStatus
-import org.apache.spark.internal.config.SCHEDULER_MODE
 import org.apache.spark.scheduler.SchedulingMode
 import org.apache.spark.status.AppStatusStore
 import org.apache.spark.ui._
@@ -38,7 +37,7 @@ private[ui] class JobsTab(parent: SparkUI, store: AppStatusStore)
     store
       .environmentInfo()
       .sparkProperties
-      .contains((SCHEDULER_MODE.key, SchedulingMode.FAIR.toString))
+      .contains(("spark.scheduler.mode", SchedulingMode.FAIR.toString))
   }
 
   def getSparkUser: String = parent.getSparkUser
@@ -48,7 +47,9 @@ private[ui] class JobsTab(parent: SparkUI, store: AppStatusStore)
 
   def handleKillRequest(request: HttpServletRequest): Unit = {
     if (killEnabled && parent.securityManager.checkModifyPermissions(request.getRemoteUser)) {
-      Option(request.getParameter("id")).map(_.toInt).foreach { id =>
+      // stripXSS is called first to remove suspicious characters used in XSS attacks
+      val jobId = Option(UIUtils.stripXSS(request.getParameter("id"))).map(_.toInt)
+      jobId.foreach { id =>
         store.asOption(store.job(id)).foreach { job =>
           if (job.status == JobExecutionStatus.RUNNING) {
             sc.foreach(_.cancelJob(id))

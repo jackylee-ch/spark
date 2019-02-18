@@ -49,21 +49,19 @@ class ResolveLambdaVariablesSuite extends PlanTest {
     comparePlans(Analyzer.execute(plan(e1)), plan(e2))
   }
 
-  private def lv(s: Symbol) = UnresolvedNamedLambdaVariable(Seq(s.name))
-
   test("resolution - no op") {
     checkExpression(key, key)
   }
 
   test("resolution - simple") {
-    val in = ArrayTransform(values1, LambdaFunction(lv('x) + 1, lv('x) :: Nil))
+    val in = ArrayTransform(values1, LambdaFunction('x.attr + 1, 'x.attr :: Nil))
     val out = ArrayTransform(values1, LambdaFunction(lvInt + 1, lvInt :: Nil))
     checkExpression(in, out)
   }
 
   test("resolution - nested") {
     val in = ArrayTransform(values2, LambdaFunction(
-      ArrayTransform(lv('x), LambdaFunction(lv('x) + 1, lv('x) :: Nil)), lv('x) :: Nil))
+      ArrayTransform('x.attr, LambdaFunction('x.attr + 1, 'x.attr :: Nil)), 'x.attr :: Nil))
     val out = ArrayTransform(values2, LambdaFunction(
       ArrayTransform(lvArray, LambdaFunction(lvInt + 1, lvInt :: Nil)), lvArray :: Nil))
     checkExpression(in, out)
@@ -77,14 +75,14 @@ class ResolveLambdaVariablesSuite extends PlanTest {
 
   test("fail - name collisions") {
     val p = plan(ArrayTransform(values1,
-      LambdaFunction(lv('x) + lv('X), lv('x) :: lv('X) :: Nil)))
+      LambdaFunction('x.attr + 'X.attr, 'x.attr :: 'X.attr :: Nil)))
     val msg = intercept[AnalysisException](Analyzer.execute(p)).getMessage
     assert(msg.contains("arguments should not have names that are semantically the same"))
   }
 
   test("fail - lambda arguments") {
     val p = plan(ArrayTransform(values1,
-      LambdaFunction(lv('x) + lv('y) + lv('z), lv('x) :: lv('y) :: lv('z) :: Nil)))
+      LambdaFunction('x.attr + 'y.attr + 'z.attr, 'x.attr :: 'y.attr :: 'z.attr :: Nil)))
     val msg = intercept[AnalysisException](Analyzer.execute(p)).getMessage
     assert(msg.contains("does not match the number of arguments expected"))
   }

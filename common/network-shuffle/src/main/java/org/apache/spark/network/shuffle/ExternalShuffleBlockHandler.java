@@ -29,7 +29,6 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricSet;
 import com.codahale.metrics.Timer;
-import com.codahale.metrics.Counter;
 import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,7 +91,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
         OpenBlocks msg = (OpenBlocks) msgObj;
         checkAuth(client, msg.appId);
         long streamId = streamManager.registerStream(client.getClientId(),
-          new ManagedBufferIterator(msg.appId, msg.execId, msg.blockIds), client.getChannel());
+          new ManagedBufferIterator(msg.appId, msg.execId, msg.blockIds));
         if (logger.isTraceEnabled()) {
           logger.trace("Registered streamId {} with {} buffers for client {} from host {}",
                        streamId,
@@ -174,8 +173,7 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
   /**
    * A simple class to wrap all shuffle service wrapper metrics
    */
-  @VisibleForTesting
-  public class ShuffleMetrics implements MetricSet {
+  private class ShuffleMetrics implements MetricSet {
     private final Map<String, Metric> allMetrics;
     // Time latency for open block request in ms
     private final Timer openBlockRequestLatencyMillis = new Timer();
@@ -183,20 +181,14 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
     private final Timer registerExecutorRequestLatencyMillis = new Timer();
     // Block transfer rate in byte per second
     private final Meter blockTransferRateBytes = new Meter();
-    // Number of active connections to the shuffle service
-    private Counter activeConnections = new Counter();
-    // Number of registered connections to the shuffle service
-    private Counter registeredConnections = new Counter();
 
-    public ShuffleMetrics() {
+    private ShuffleMetrics() {
       allMetrics = new HashMap<>();
       allMetrics.put("openBlockRequestLatencyMillis", openBlockRequestLatencyMillis);
       allMetrics.put("registerExecutorRequestLatencyMillis", registerExecutorRequestLatencyMillis);
       allMetrics.put("blockTransferRateBytes", blockTransferRateBytes);
       allMetrics.put("registeredExecutorsSize",
                      (Gauge<Integer>) () -> blockManager.getRegisteredExecutorsSize());
-      allMetrics.put("numActiveConnections", activeConnections);
-      allMetrics.put("numRegisteredConnections", registeredConnections);
     }
 
     @Override
@@ -250,18 +242,6 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
       metrics.blockTransferRateBytes.mark(block != null ? block.size() : 0);
       return block;
     }
-  }
-
-  @Override
-  public void channelActive(TransportClient client) {
-    metrics.activeConnections.inc();
-    super.channelActive(client);
-  }
-
-  @Override
-  public void channelInactive(TransportClient client) {
-    metrics.activeConnections.dec();
-    super.channelInactive(client);
   }
 
 }

@@ -87,9 +87,8 @@ private[clustering] trait BisectingKMeansParams extends Params with HasMaxIter
 @Since("2.0.0")
 class BisectingKMeansModel private[ml] (
     @Since("2.0.0") override val uid: String,
-    private val parentModel: MLlibBisectingKMeansModel)
-  extends Model[BisectingKMeansModel] with BisectingKMeansParams with MLWritable
-  with HasTrainingSummary[BisectingKMeansSummary] {
+    private val parentModel: MLlibBisectingKMeansModel
+  ) extends Model[BisectingKMeansModel] with BisectingKMeansParams with MLWritable {
 
   @Since("2.0.0")
   override def copy(extra: ParamMap): BisectingKMeansModel = {
@@ -126,15 +125,8 @@ class BisectingKMeansModel private[ml] (
   /**
    * Computes the sum of squared distances between the input points and their corresponding cluster
    * centers.
-   *
-   * @deprecated This method is deprecated and will be removed in future versions. Use
-   *             ClusteringEvaluator instead. You can also get the cost on the training dataset in
-   *             the summary.
    */
   @Since("2.0.0")
-  @deprecated("This method is deprecated and will be removed in future versions. Use " +
-    "ClusteringEvaluator instead. You can also get the cost on the training dataset in the " +
-    "summary.", "3.0.0")
   def computeCost(dataset: Dataset[_]): Double = {
     SchemaUtils.validateVectorCompatibleColumn(dataset.schema, getFeaturesCol)
     val data = DatasetUtils.columnToOldVector(dataset, getFeaturesCol)
@@ -144,12 +136,28 @@ class BisectingKMeansModel private[ml] (
   @Since("2.0.0")
   override def write: MLWriter = new BisectingKMeansModel.BisectingKMeansModelWriter(this)
 
+  private var trainingSummary: Option[BisectingKMeansSummary] = None
+
+  private[clustering] def setSummary(summary: Option[BisectingKMeansSummary]): this.type = {
+    this.trainingSummary = summary
+    this
+  }
+
   /**
-   * Gets summary of model on training set. An exception is
-   * thrown if `hasSummary` is false.
+   * Return true if there exists summary of model.
    */
   @Since("2.1.0")
-  override def summary: BisectingKMeansSummary = super.summary
+  def hasSummary: Boolean = trainingSummary.nonEmpty
+
+  /**
+   * Gets summary of model on training set. An exception is
+   * thrown if `trainingSummary == None`.
+   */
+  @Since("2.1.0")
+  def summary: BisectingKMeansSummary = trainingSummary.getOrElse {
+    throw new SparkException(
+      s"No training summary available for the ${this.getClass.getSimpleName}")
+  }
 }
 
 object BisectingKMeansModel extends MLReadable[BisectingKMeansModel] {
@@ -264,12 +272,7 @@ class BisectingKMeans @Since("2.0.0") (
     val parentModel = bkm.run(rdd, Some(instr))
     val model = copyValues(new BisectingKMeansModel(uid, parentModel).setParent(this))
     val summary = new BisectingKMeansSummary(
-      model.transform(dataset),
-      $(predictionCol),
-      $(featuresCol),
-      $(k),
-      $(maxIter),
-      parentModel.trainingCost)
+      model.transform(dataset), $(predictionCol), $(featuresCol), $(k), $(maxIter))
     instr.logNamedValue("clusterSizes", summary.clusterSizes)
     instr.logNumFeatures(model.clusterCenters.head.size)
     model.setSummary(Some(summary))
@@ -299,8 +302,6 @@ object BisectingKMeans extends DefaultParamsReadable[BisectingKMeans] {
  * @param featuresCol  Name for column of features in `predictions`.
  * @param k  Number of clusters.
  * @param numIter  Number of iterations.
- * @param trainingCost Sum of the cost to the nearest centroid for all points in the training
- *                     dataset. This is equivalent to sklearn's inertia.
  */
 @Since("2.1.0")
 @Experimental
@@ -309,6 +310,4 @@ class BisectingKMeansSummary private[clustering] (
     predictionCol: String,
     featuresCol: String,
     k: Int,
-    numIter: Int,
-    @Since("3.0.0") val trainingCost: Double)
-  extends ClusteringSummary(predictions, predictionCol, featuresCol, k, numIter)
+    numIter: Int) extends ClusteringSummary(predictions, predictionCol, featuresCol, k, numIter)

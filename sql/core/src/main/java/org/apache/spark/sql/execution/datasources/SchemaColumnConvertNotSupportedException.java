@@ -17,12 +17,12 @@
 
 package org.apache.spark.sql.execution.datasources;
 
-import org.apache.spark.annotation.Unstable;
+import org.apache.spark.annotation.InterfaceStability;
 
 /**
  * Exception thrown when the parquet reader find column type mismatches.
  */
-@Unstable
+@InterfaceStability.Unstable
 public class SchemaColumnConvertNotSupportedException extends RuntimeException {
 
   /**

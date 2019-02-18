@@ -23,7 +23,6 @@ import org.scalatest.{BeforeAndAfterEach, Suite}
 import org.scalatest.concurrent.Eventually
 
 import org.apache.spark.{DebugFilesystem, SparkConf}
-import org.apache.spark.internal.config.UNSAFE_EXCEPTION_ON_MEMORY_LEAK
 import org.apache.spark.sql.{SparkSession, SQLContext}
 import org.apache.spark.sql.catalyst.optimizer.ConvertToLocalRelation
 import org.apache.spark.sql.internal.SQLConf
@@ -39,7 +38,7 @@ trait SharedSparkSession
   protected def sparkConf = {
     new SparkConf()
       .set("spark.hadoop.fs.file.impl", classOf[DebugFilesystem].getName)
-      .set(UNSAFE_EXCEPTION_ON_MEMORY_LEAK, true)
+      .set("spark.unsafe.exceptionOnMemoryLeak", "true")
       .set(SQLConf.CODEGEN_FALLBACK.key, "false")
       // Disable ConvertToLocalRelation for better test coverage. Test cases built on
       // LocalRelation will exercise the optimization rules better by disabling it as

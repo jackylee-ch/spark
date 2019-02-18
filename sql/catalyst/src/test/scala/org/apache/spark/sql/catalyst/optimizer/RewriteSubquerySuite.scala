@@ -34,7 +34,7 @@ class RewriteSubquerySuite extends PlanTest {
         RewritePredicateSubquery,
         ColumnPruning,
         CollapseProject,
-        RemoveNoopOperators) :: Nil
+        RemoveRedundantProject) :: Nil
   }
 
   test("Column pruning after rewriting predicate subquery") {

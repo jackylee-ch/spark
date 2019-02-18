@@ -52,11 +52,13 @@ import org.apache.spark.util.Utils
  *                    defaults to the product of children's `sizeInBytes`.
  * @param rowCount Estimated number of rows.
  * @param attributeStats Statistics for Attributes.
+ * @param hints Query hints.
  */
 case class Statistics(
     sizeInBytes: BigInt,
     rowCount: Option[BigInt] = None,
-    attributeStats: AttributeMap[ColumnStat] = AttributeMap(Nil)) {
+    attributeStats: AttributeMap[ColumnStat] = AttributeMap(Nil),
+    hints: HintInfo = HintInfo()) {
 
   override def toString: String = "Statistics(" + simpleString + ")"
 
@@ -68,7 +70,8 @@ case class Statistics(
         s"rowCount=${BigDecimal(rowCount.get, new MathContext(3, RoundingMode.HALF_UP)).toString()}"
       } else {
         ""
-      }
+      },
+      s"hints=$hints"
     ).filter(_.nonEmpty).mkString(", ")
   }
 }
@@ -90,7 +93,6 @@ case class Statistics(
  * @param avgLen average length of the values. For fixed-length types, this should be a constant.
  * @param maxLen maximum length of the values. For fixed-length types, this should be a constant.
  * @param histogram histogram of the values
- * @param version version of statistics saved to or retrieved from the catalog
  */
 case class ColumnStat(
     distinctCount: Option[BigInt] = None,
@@ -99,8 +101,7 @@ case class ColumnStat(
     nullCount: Option[BigInt] = None,
     avgLen: Option[Long] = None,
     maxLen: Option[Long] = None,
-    histogram: Option[Histogram] = None,
-    version: Int = CatalogColumnStat.VERSION) {
+    histogram: Option[Histogram] = None) {
 
   // Are distinctCount and nullCount statistics defined?
   val hasCountStats = distinctCount.isDefined && nullCount.isDefined
@@ -119,8 +120,7 @@ case class ColumnStat(
       nullCount = nullCount,
       avgLen = avgLen,
       maxLen = maxLen,
-      histogram = histogram,
-      version = version)
+      histogram = histogram)
 }
 
 /**

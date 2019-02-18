@@ -102,18 +102,16 @@ class Analyzer(
     this(catalog, conf, conf.optimizerMaxIterations)
   }
 
-  def executeAndCheck(plan: LogicalPlan, tracker: QueryPlanningTracker): LogicalPlan = {
-    AnalysisHelper.markInAnalyzer {
-      val analyzed = executeAndTrack(plan, tracker)
-      try {
-        checkAnalysis(analyzed)
-        analyzed
-      } catch {
-        case e: AnalysisException =>
-          val ae = new AnalysisException(e.message, e.line, e.startPosition, Option(analyzed))
-          ae.setStackTrace(e.getStackTrace)
-          throw ae
-      }
+  def executeAndCheck(plan: LogicalPlan): LogicalPlan = AnalysisHelper.markInAnalyzer {
+    val analyzed = execute(plan)
+    try {
+      checkAnalysis(analyzed)
+      analyzed
+    } catch {
+      case e: AnalysisException =>
+        val ae = new AnalysisException(e.message, e.line, e.startPosition, Option(analyzed))
+        ae.setStackTrace(e.getStackTrace)
+        throw ae
     }
   }
 
@@ -197,8 +195,8 @@ class Analyzer(
       PullOutNondeterministic),
     Batch("UDF", Once,
       HandleNullInputsForUDF),
-    Batch("UpdateNullability", Once,
-      UpdateAttributeNullability),
+    Batch("FixNullability", Once,
+      FixNullability),
     Batch("Subquery", Once,
       UpdateOuterReferences),
     Batch("Cleanup", fixedPoint,
@@ -556,10 +554,8 @@ class Analyzer(
           Cast(value, pivotColumn.dataType, Some(conf.sessionLocalTimeZone)).eval(EmptyRow)
         }
         // Group-by expressions coming from SQL are implicit and need to be deduced.
-        val groupByExprs = groupByExprsOpt.getOrElse {
-          val pivotColAndAggRefs = pivotColumn.references ++ AttributeSet(aggregates)
-          child.output.filterNot(pivotColAndAggRefs.contains)
-        }
+        val groupByExprs = groupByExprsOpt.getOrElse(
+          (child.outputSet -- aggregates.flatMap(_.references) -- pivotColumn.references).toSeq)
         val singleAgg = aggregates.size == 1
         def outputName(value: Expression, aggregate: Expression): String = {
           val stringValue = value match {
@@ -826,8 +822,7 @@ class Analyzer(
     }
 
     private def dedupAttr(attr: Attribute, attrMap: AttributeMap[Attribute]): Attribute = {
-      val exprId = attrMap.getOrElse(attr, attr).exprId
-      attr.withExprId(exprId)
+      attrMap.get(attr).getOrElse(attr).withQualifier(attr.qualifier)
     }
 
     /**
@@ -873,7 +868,7 @@ class Analyzer(
     private def dedupOuterReferencesInSubquery(
         plan: LogicalPlan,
         attrMap: AttributeMap[Attribute]): LogicalPlan = {
-      plan transformDown { case currentFragment =>
+      plan resolveOperatorsDown { case currentFragment =>
         currentFragment transformExpressions {
           case OuterReference(a: Attribute) =>
             OuterReference(dedupAttr(a, attrMap))
@@ -883,38 +878,21 @@ class Analyzer(
       }
     }
 
-    /**
-     * Resolves the attribute and extract value expressions(s) by traversing the
-     * input expression in top down manner. The traversal is done in top-down manner as
-     * we need to skip over unbound lamda function expression. The lamda expressions are
-     * resolved in a different rule [[ResolveLambdaVariables]]
-     *
-     * Example :
-     * SELECT transform(array(1, 2, 3), (x, i) -> x + i)"
-     *
-     * In the case above, x and i are resolved as lamda variables in [[ResolveLambdaVariables]]
-     *
-     * Note : In this routine, the unresolved attributes are resolved from the input plan's
-     * children attributes.
-     */
-    private def resolveExpressionTopDown(e: Expression, q: LogicalPlan): Expression = {
-      if (e.resolved) return e
-      e match {
-        case f: LambdaFunction if !f.bound => f
-        case u @ UnresolvedAttribute(nameParts) =>
-          // Leave unchanged if resolution fails. Hopefully will be resolved next round.
-          val result =
-            withPosition(u) {
-              q.resolveChildren(nameParts, resolver)
-                .orElse(resolveLiteralFunction(nameParts, u, q))
-                .getOrElse(u)
-            }
-          logDebug(s"Resolving $u to $result")
-          result
-        case UnresolvedExtractValue(child, fieldExpr) if child.resolved =>
-          ExtractValue(child, fieldExpr, resolver)
-        case _ => e.mapChildren(resolveExpressionTopDown(_, q))
-      }
+    private def resolve(e: Expression, q: LogicalPlan): Expression = e match {
+      case f: LambdaFunction if !f.bound => f
+      case u @ UnresolvedAttribute(nameParts) =>
+        // Leave unchanged if resolution fails. Hopefully will be resolved next round.
+        val result =
+          withPosition(u) {
+            q.resolveChildren(nameParts, resolver)
+              .orElse(resolveLiteralFunction(nameParts, u, q))
+              .getOrElse(u)
+          }
+        logDebug(s"Resolving $u to $result")
+        result
+      case UnresolvedExtractValue(child, fieldExpr) if child.resolved =>
+        ExtractValue(child, fieldExpr, resolver)
+      case _ => e.mapChildren(resolve(_, q))
     }
 
     def apply(plan: LogicalPlan): LogicalPlan = plan.resolveOperatorsUp {
@@ -943,7 +921,7 @@ class Analyzer(
         failAnalysis("Invalid usage of '*' in explode/json_tuple/UDTF")
 
       // To resolve duplicate expression IDs for Join and Intersect
-      case j @ Join(left, right, _, _, _) if !j.duplicateResolved =>
+      case j @ Join(left, right, _, _) if !j.duplicateResolved =>
         j.copy(right = dedupRight(left, right))
       case i @ Intersect(left, right, _) if !i.duplicateResolved =>
         i.copy(right = dedupRight(left, right))
@@ -953,7 +931,7 @@ class Analyzer(
       // we still have chance to resolve it based on its descendants
       case s @ Sort(ordering, global, child) if child.resolved && !s.resolved =>
         val newOrdering =
-          ordering.map(order => resolveExpressionBottomUp(order, child).asInstanceOf[SortOrder])
+          ordering.map(order => resolveExpression(order, child).asInstanceOf[SortOrder])
         Sort(newOrdering, global, child)
 
       // A special case for Generate, because the output of Generate should not be resolved by
@@ -961,7 +939,7 @@ class Analyzer(
       case g @ Generate(generator, _, _, _, _, _) if generator.resolved => g
 
       case g @ Generate(generator, join, outer, qualifier, output, child) =>
-        val newG = resolveExpressionBottomUp(generator, child, throws = true)
+        val newG = resolveExpression(generator, child, throws = true)
         if (newG.fastEquals(generator)) {
           g
         } else {
@@ -972,20 +950,9 @@ class Analyzer(
       // rule: ResolveDeserializer.
       case plan if containsDeserializer(plan.expressions) => plan
 
-      // SPARK-25942: Resolves aggregate expressions with `AppendColumns`'s children, instead of
-      // `AppendColumns`, because `AppendColumns`'s serializer might produce conflict attribute
-      // names leading to ambiguous references exception.
-      case a @ Aggregate(groupingExprs, aggExprs, appendColumns: AppendColumns) =>
-        a.mapExpressions(resolveExpressionTopDown(_, appendColumns))
-
-      case o: OverwriteByExpression if !o.outputResolved =>
-        // do not resolve expression attributes until the query attributes are resolved against the
-        // table by ResolveOutputRelation. that rule will alias the attributes to the table's names.
-        o
-
       case q: LogicalPlan =>
-        logTrace(s"Attempting to resolve ${q.simpleString(SQLConf.get.maxToStringFields)}")
-        q.mapExpressions(resolveExpressionTopDown(_, q))
+        logTrace(s"Attempting to resolve ${q.simpleString}")
+        q.mapExpressions(resolve(_, q))
     }
 
     def newAliases(expressions: Seq[NamedExpression]): Seq[NamedExpression] = {
@@ -1082,22 +1049,7 @@ class Analyzer(
     func.map(wrapper)
   }
 
-  /**
-   * Resolves the attribute, column value and extract value expressions(s) by traversing the
-   * input expression in bottom-up manner. In order to resolve the nested complex type fields
-   * correctly, this function makes use of `throws` parameter to control when to raise an
-   * AnalysisException.
-   *
-   * Example :
-   * SELECT a.b FROM t ORDER BY b[0].d
-   *
-   * In the above example, in b needs to be resolved before d can be resolved. Given we are
-   * doing a bottom up traversal, it will first attempt to resolve d and fail as b has not
-   * been resolved yet. If `throws` is false, this function will handle the exception by
-   * returning the original attribute. In this case `d` will be resolved in subsequent passes
-   * after `b` is resolved.
-   */
-  protected[sql] def resolveExpressionBottomUp(
+  protected[sql] def resolveExpression(
       expr: Expression,
       plan: LogicalPlan,
       throws: Boolean = false): Expression = {
@@ -1110,14 +1062,11 @@ class Analyzer(
       expr transformUp {
         case GetColumnByOrdinal(ordinal, _) => plan.output(ordinal)
         case u @ UnresolvedAttribute(nameParts) =>
-          val result =
-            withPosition(u) {
-              plan.resolve(nameParts, resolver)
-                .orElse(resolveLiteralFunction(nameParts, u, plan))
-                .getOrElse(u)
-            }
-          logDebug(s"Resolving $u to $result")
-          result
+          withPosition(u) {
+            plan.resolve(nameParts, resolver)
+              .orElse(resolveLiteralFunction(nameParts, u, plan))
+              .getOrElse(u)
+          }
         case UnresolvedExtractValue(child, fieldName) if child.resolved =>
           ExtractValue(child, fieldName, resolver)
       }
@@ -1263,7 +1212,7 @@ class Analyzer(
         plan match {
           case p: Project =>
             // Resolving expressions against current plan.
-            val maybeResolvedExprs = exprs.map(resolveExpressionBottomUp(_, p))
+            val maybeResolvedExprs = exprs.map(resolveExpression(_, p))
             // Recursively resolving expressions on the child of current plan.
             val (newExprs, newChild) = resolveExprsAndAddMissingAttrs(maybeResolvedExprs, p.child)
             // If some attributes used by expressions are resolvable only on the rewritten child
@@ -1272,7 +1221,7 @@ class Analyzer(
             (newExprs, Project(p.projectList ++ missingAttrs, newChild))
 
           case a @ Aggregate(groupExprs, aggExprs, child) =>
-            val maybeResolvedExprs = exprs.map(resolveExpressionBottomUp(_, a))
+            val maybeResolvedExprs = exprs.map(resolveExpression(_, a))
             val (newExprs, newChild) = resolveExprsAndAddMissingAttrs(maybeResolvedExprs, child)
             val missingAttrs = (AttributeSet(newExprs) -- a.outputSet).intersect(newChild.outputSet)
             if (missingAttrs.forall(attr => groupExprs.exists(_.semanticEquals(attr)))) {
@@ -1284,20 +1233,20 @@ class Analyzer(
             }
 
           case g: Generate =>
-            val maybeResolvedExprs = exprs.map(resolveExpressionBottomUp(_, g))
+            val maybeResolvedExprs = exprs.map(resolveExpression(_, g))
             val (newExprs, newChild) = resolveExprsAndAddMissingAttrs(maybeResolvedExprs, g.child)
             (newExprs, g.copy(unrequiredChildIndex = Nil, child = newChild))
 
           // For `Distinct` and `SubqueryAlias`, we can't recursively resolve and add attributes
           // via its children.
           case u: UnaryNode if !u.isInstanceOf[Distinct] && !u.isInstanceOf[SubqueryAlias] =>
-            val maybeResolvedExprs = exprs.map(resolveExpressionBottomUp(_, u))
+            val maybeResolvedExprs = exprs.map(resolveExpression(_, u))
             val (newExprs, newChild) = resolveExprsAndAddMissingAttrs(maybeResolvedExprs, u.child)
             (newExprs, u.withNewChildren(Seq(newChild)))
 
           // For other operators, we can't recursively resolve and add attributes via its children.
           case other =>
-            (exprs.map(resolveExpressionBottomUp(_, other)), other)
+            (exprs.map(resolveExpression(_, other)), other)
         }
       }
     }
@@ -1782,7 +1731,7 @@ class Analyzer(
 
       case p if p.expressions.exists(hasGenerator) =>
         throw new AnalysisException("Generators are not supported outside the SELECT clause, but " +
-          "got: " + p.simpleString(SQLConf.get.maxToStringFields))
+          "got: " + p.simpleString)
     }
   }
 
@@ -1823,6 +1772,40 @@ class Analyzer(
           s"output by the UDTF expected ${elementAttrs.size} aliases but got " +
           s"${names.mkString(",")} ")
       }
+    }
+  }
+
+  /**
+   * Fixes nullability of Attributes in a resolved LogicalPlan by using the nullability of
+   * corresponding Attributes of its children output Attributes. This step is needed because
+   * users can use a resolved AttributeReference in the Dataset API and outer joins
+   * can change the nullability of an AttribtueReference. Without the fix, a nullable column's
+   * nullable field can be actually set as non-nullable, which cause illegal optimization
+   * (e.g., NULL propagation) and wrong answers.
+   * See SPARK-13484 and SPARK-13801 for the concrete queries of this case.
+   */
+  object FixNullability extends Rule[LogicalPlan] {
+
+    def apply(plan: LogicalPlan): LogicalPlan = plan resolveOperatorsUp {
+      case p if !p.resolved => p // Skip unresolved nodes.
+      case p: LogicalPlan if p.resolved =>
+        val childrenOutput = p.children.flatMap(c => c.output).groupBy(_.exprId).flatMap {
+          case (exprId, attributes) =>
+            // If there are multiple Attributes having the same ExprId, we need to resolve
+            // the conflict of nullable field. We do not really expect this happen.
+            val nullable = attributes.exists(_.nullable)
+            attributes.map(attr => attr.withNullability(nullable))
+        }.toSeq
+        // At here, we create an AttributeMap that only compare the exprId for the lookup
+        // operation. So, we can find the corresponding input attribute's nullability.
+        val attributeMap = AttributeMap[Attribute](childrenOutput.map(attr => attr -> attr))
+        // For an Attribute used by the current LogicalPlan, if it is from its children,
+        // we fix the nullable field by using the nullability setting of the corresponding
+        // output Attribute from the children.
+        p.transformExpressions {
+          case attr: Attribute if attributeMap.contains(attr) =>
+            attr.withNullability(attributeMap(attr).nullable)
+        }
     }
   }
 
@@ -2152,35 +2135,33 @@ class Analyzer(
 
       case p => p transformExpressionsUp {
 
-        case udf @ ScalaUDF(_, _, inputs, inputPrimitives, _, _, _, _)
-            if inputPrimitives.contains(true) =>
-          // Otherwise, add special handling of null for fields that can't accept null.
-          // The result of operations like this, when passed null, is generally to return null.
-          assert(inputPrimitives.length == inputs.length)
+        case udf@ScalaUDF(func, _, inputs, _, _, _, _, nullableTypes) =>
+          if (nullableTypes.isEmpty) {
+            // If no nullability info is available, do nothing. No fields will be specially
+            // checked for null in the plan. If nullability info is incorrect, the results
+            // of the UDF could be wrong.
+            udf
+          } else {
+            // Otherwise, add special handling of null for fields that can't accept null.
+            // The result of operations like this, when passed null, is generally to return null.
+            assert(nullableTypes.length == inputs.length)
 
-          val inputPrimitivesPair = inputPrimitives.zip(inputs)
-          val inputNullCheck = inputPrimitivesPair.collect {
-            case (isPrimitive, input) if isPrimitive && input.nullable =>
-              IsNull(input)
-          }.reduceLeftOption[Expression](Or)
-
-          if (inputNullCheck.isDefined) {
+            // TODO: skip null handling for not-nullable primitive inputs after we can completely
+            // trust the `nullable` information.
+            val inputsNullCheck = nullableTypes.zip(inputs)
+              .filter { case (nullable, _) => !nullable }
+              .map { case (_, expr) => IsNull(expr) }
+              .reduceLeftOption[Expression]((e1, e2) => Or(e1, e2))
             // Once we add an `If` check above the udf, it is safe to mark those checked inputs
-            // as null-safe (i.e., wrap with `KnownNotNull`), because the null-returning
+            // as not nullable (i.e., wrap them with `KnownNotNull`), because the null-returning
             // branch of `If` will be called if any of these checked inputs is null. Thus we can
             // prevent this rule from being applied repeatedly.
-            val newInputs = inputPrimitivesPair.map {
-              case (isPrimitive, input) =>
-                if (isPrimitive && input.nullable) {
-                  KnownNotNull(input)
-                } else {
-                  input
-                }
+            val newInputs = nullableTypes.zip(inputs).map { case (nullable, expr) =>
+              if (nullable) expr else KnownNotNull(expr)
             }
-            val newUDF = udf.copy(children = newInputs)
-            If(inputNullCheck.get, Literal.create(null, udf.dataType), newUDF)
-          } else {
-            udf
+            inputsNullCheck
+              .map(If(_, Literal.create(null, udf.dataType), udf.copy(children = newInputs)))
+              .getOrElse(udf)
           }
       }
     }
@@ -2229,14 +2210,13 @@ class Analyzer(
    */
   object ResolveNaturalAndUsingJoin extends Rule[LogicalPlan] {
     override def apply(plan: LogicalPlan): LogicalPlan = plan.resolveOperatorsUp {
-      case j @ Join(left, right, UsingJoin(joinType, usingCols), _, hint)
+      case j @ Join(left, right, UsingJoin(joinType, usingCols), _)
           if left.resolved && right.resolved && j.duplicateResolved =>
-        commonNaturalJoinProcessing(left, right, joinType, usingCols, None, hint)
-      case j @ Join(left, right, NaturalJoin(joinType), condition, hint)
-          if j.resolvedExceptNatural =>
+        commonNaturalJoinProcessing(left, right, joinType, usingCols, None)
+      case j @ Join(left, right, NaturalJoin(joinType), condition) if j.resolvedExceptNatural =>
         // find common column names from both sides
         val joinNames = left.output.map(_.name).intersect(right.output.map(_.name))
-        commonNaturalJoinProcessing(left, right, joinType, joinNames, condition, hint)
+        commonNaturalJoinProcessing(left, right, joinType, joinNames, condition)
     }
   }
 
@@ -2251,33 +2231,13 @@ class Analyzer(
   object ResolveOutputRelation extends Rule[LogicalPlan] {
     override def apply(plan: LogicalPlan): LogicalPlan = plan.resolveOperators {
       case append @ AppendData(table, query, isByName)
-          if table.resolved && query.resolved && !append.outputResolved =>
+          if table.resolved && query.resolved && !append.resolved =>
         val projection = resolveOutputColumns(table.name, table.output, query, isByName)
 
         if (projection != query) {
           append.copy(query = projection)
         } else {
           append
-        }
-
-      case overwrite @ OverwriteByExpression(table, _, query, isByName)
-          if table.resolved && query.resolved && !overwrite.outputResolved =>
-        val projection = resolveOutputColumns(table.name, table.output, query, isByName)
-
-        if (projection != query) {
-          overwrite.copy(query = projection)
-        } else {
-          overwrite
-        }
-
-      case overwrite @ OverwritePartitionsDynamic(table, query, isByName)
-          if table.resolved && query.resolved && !overwrite.outputResolved =>
-        val projection = resolveOutputColumns(table.name, table.output, query, isByName)
-
-        if (projection != query) {
-          overwrite.copy(query = projection)
-        } else {
-          overwrite
         }
     }
 
@@ -2361,8 +2321,7 @@ class Analyzer(
       right: LogicalPlan,
       joinType: JoinType,
       joinNames: Seq[String],
-      condition: Option[Expression],
-      hint: JoinHint) = {
+      condition: Option[Expression]) = {
     val leftKeys = joinNames.map { keyName =>
       left.output.find(attr => resolver(attr.name, keyName)).getOrElse {
         throw new AnalysisException(s"USING column `$keyName` cannot be resolved on the left " +
@@ -2403,7 +2362,7 @@ class Analyzer(
         sys.error("Unsupported natural join type " + joinType)
     }
     // use Project to trim unnecessary fields
-    Project(projectList, Join(left, right, joinType, newCondition, hint))
+    Project(projectList, Join(left, right, joinType, newCondition))
   }
 
   /**
@@ -2424,28 +2383,19 @@ class Analyzer(
           }
 
           validateTopLevelTupleFields(deserializer, inputs)
-          val resolved = resolveExpressionBottomUp(
+          val resolved = resolveExpression(
             deserializer, LocalRelation(inputs), throws = true)
           val result = resolved transformDown {
             case UnresolvedMapObjects(func, inputData, cls) if inputData.resolved =>
               inputData.dataType match {
                 case ArrayType(et, cn) =>
-                  MapObjects(func, inputData, et, cn, cls) transformUp {
+                  val expr = MapObjects(func, inputData, et, cn, cls) transformUp {
                     case UnresolvedExtractValue(child, fieldName) if child.resolved =>
                       ExtractValue(child, fieldName, resolver)
                   }
+                  expr
                 case other =>
                   throw new AnalysisException("need an array field but got " + other.catalogString)
-              }
-            case u: UnresolvedCatalystToExternalMap if u.child.resolved =>
-              u.child.dataType match {
-                case _: MapType =>
-                  CatalystToExternalMap(u) transformUp {
-                    case UnresolvedExtractValue(child, fieldName) if child.resolved =>
-                      ExtractValue(child, fieldName, resolver)
-                  }
-                case other =>
-                  throw new AnalysisException("need a map field but got " + other.catalogString)
               }
           }
           validateNestedTupleFields(result)

@@ -21,7 +21,6 @@ import scala.annotation.tailrec
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.BindReferences.bindReferences
 import org.apache.spark.sql.catalyst.expressions.aggregate.NoOp
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, ArrayData, GenericArrayData, MapData}
@@ -42,7 +41,7 @@ object GenerateSafeProjection extends CodeGenerator[Seq[Expression], Projection]
     in.map(ExpressionCanonicalizer.execute)
 
   protected def bind(in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] =
-    bindReferences(in, inputSchema)
+    in.map(BindReferences.bindReference(_, inputSchema))
 
   private def createCodeForStruct(
       ctx: CodegenContext,

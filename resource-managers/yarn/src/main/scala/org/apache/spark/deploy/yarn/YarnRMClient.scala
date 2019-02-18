@@ -76,13 +76,12 @@ private[spark] class YarnRMClient extends Logging {
   def createAllocator(
       conf: YarnConfiguration,
       sparkConf: SparkConf,
-      appAttemptId: ApplicationAttemptId,
       driverUrl: String,
       driverRef: RpcEndpointRef,
       securityMgr: SecurityManager,
       localResources: Map[String, LocalResource]): YarnAllocator = {
     require(registered, "Must register AM before creating allocator.")
-    new YarnAllocator(driverUrl, driverRef, conf, sparkConf, amClient, appAttemptId, securityMgr,
+    new YarnAllocator(driverUrl, driverRef, conf, sparkConf, amClient, getAttemptId(), securityMgr,
       localResources, new SparkRackResolver())
   }
 
@@ -99,6 +98,11 @@ private[spark] class YarnRMClient extends Logging {
     if (amClient != null) {
       amClient.stop()
     }
+  }
+
+  /** Returns the attempt ID. */
+  def getAttemptId(): ApplicationAttemptId = {
+    YarnSparkHadoopUtil.getContainerId.getApplicationAttemptId()
   }
 
   /** Returns the configuration for the AmIpFilter to add to the Spark UI. */

@@ -21,21 +21,21 @@ import java.io.IOException;
 
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector;
+import org.apache.spark.sql.sources.v2.BatchReadSupportProvider;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
-import org.apache.spark.sql.sources.v2.Table;
-import org.apache.spark.sql.sources.v2.TableProvider;
+import org.apache.spark.sql.sources.v2.DataSourceV2;
 import org.apache.spark.sql.sources.v2.reader.*;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.vectorized.ColumnVector;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
 
 
-public class JavaColumnarDataSourceV2 implements TableProvider {
+public class JavaColumnarDataSourceV2 implements DataSourceV2, BatchReadSupportProvider {
 
-  class MyScanBuilder extends JavaSimpleScanBuilder {
+  class ReadSupport extends JavaSimpleReadSupport {
 
     @Override
-    public InputPartition[] planInputPartitions() {
+    public InputPartition[] planInputPartitions(ScanConfig config) {
       InputPartition[] partitions = new InputPartition[2];
       partitions[0] = new JavaRangeInputPartition(0, 50);
       partitions[1] = new JavaRangeInputPartition(50, 90);
@@ -43,19 +43,9 @@ public class JavaColumnarDataSourceV2 implements TableProvider {
     }
 
     @Override
-    public PartitionReaderFactory createReaderFactory() {
+    public PartitionReaderFactory createReaderFactory(ScanConfig config) {
       return new ColumnarReaderFactory();
     }
-  }
-
-  @Override
-  public Table getTable(DataSourceOptions options) {
-    return new JavaSimpleBatchTable() {
-      @Override
-      public ScanBuilder newScanBuilder(DataSourceOptions options) {
-        return new MyScanBuilder();
-      }
-    };
   }
 
   static class ColumnarReaderFactory implements PartitionReaderFactory {
@@ -115,5 +105,10 @@ public class JavaColumnarDataSourceV2 implements TableProvider {
         }
       };
     }
+  }
+
+  @Override
+  public BatchReadSupport createBatchReadSupport(DataSourceOptions options) {
+    return new ReadSupport();
   }
 }

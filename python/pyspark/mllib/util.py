@@ -17,6 +17,7 @@
 
 import sys
 import numpy as np
+import warnings
 
 if sys.version > '3':
     xrange = range
@@ -37,10 +38,12 @@ class MLUtils(object):
     """
 
     @staticmethod
-    def _parse_libsvm_line(line):
+    def _parse_libsvm_line(line, multiclass=None):
         """
         Parses a line in LIBSVM format into (label, indices, values).
         """
+        if multiclass is not None:
+            warnings.warn("deprecated", DeprecationWarning)
         items = line.split(None)
         label = float(items[0])
         nnz = len(items) - 1
@@ -70,7 +73,7 @@ class MLUtils(object):
 
     @staticmethod
     @since("1.0.0")
-    def loadLibSVMFile(sc, path, numFeatures=-1, minPartitions=None):
+    def loadLibSVMFile(sc, path, numFeatures=-1, minPartitions=None, multiclass=None):
         """
         Loads labeled data in the LIBSVM format into an RDD of
         LabeledPoint. The LIBSVM format is a text-based format used by
@@ -113,6 +116,8 @@ class MLUtils(object):
         LabeledPoint(-1.0, (6,[1,3,5],[4.0,5.0,6.0]))
         """
         from pyspark.mllib.regression import LabeledPoint
+        if multiclass is not None:
+            warnings.warn("deprecated", DeprecationWarning)
 
         lines = sc.textFile(path, minPartitions)
         parsed = lines.map(lambda l: MLUtils._parse_libsvm_line(l))
@@ -419,7 +424,7 @@ class Loader(object):
                      was saved.
         :return: model instance
         """
-        raise NotImplementedError
+        raise NotImplemented
 
 
 @inherit_doc

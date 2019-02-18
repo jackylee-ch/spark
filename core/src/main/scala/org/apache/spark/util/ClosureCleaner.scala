@@ -23,8 +23,8 @@ import java.lang.invoke.SerializedLambda
 import scala.collection.mutable.{Map, Set, Stack}
 import scala.language.existentials
 
-import org.apache.xbean.asm7.{ClassReader, ClassVisitor, MethodVisitor, Type}
-import org.apache.xbean.asm7.Opcodes._
+import org.apache.xbean.asm6.{ClassReader, ClassVisitor, MethodVisitor, Type}
+import org.apache.xbean.asm6.Opcodes._
 
 import org.apache.spark.{SparkEnv, SparkException}
 import org.apache.spark.internal.Logging
@@ -285,6 +285,8 @@ private[spark] object ClosureCleaner extends Logging {
         innerClasses.foreach { c => logDebug(s"     ${c.getName}") }
         logDebug(s" + outer classes: ${outerClasses.size}" )
         outerClasses.foreach { c => logDebug(s"     ${c.getName}") }
+        logDebug(s" + outer objects: ${outerObjects.size}")
+        outerObjects.foreach { o => logDebug(s"     $o") }
       }
 
       // Fail fast if we detect return statements in closures
@@ -316,20 +318,19 @@ private[spark] object ClosureCleaner extends Logging {
       if (outerPairs.nonEmpty) {
         val (outermostClass, outermostObject) = outerPairs.head
         if (isClosure(outermostClass)) {
-          logDebug(s" + outermost object is a closure, so we clone it: ${outermostClass}")
+          logDebug(s" + outermost object is a closure, so we clone it: ${outerPairs.head}")
         } else if (outermostClass.getName.startsWith("$line")) {
           // SPARK-14558: if the outermost object is a REPL line object, we should clone
           // and clean it as it may carray a lot of unnecessary information,
           // e.g. hadoop conf, spark conf, etc.
-          logDebug(s" + outermost object is a REPL line object, so we clone it:" +
-            s" ${outermostClass}")
+          logDebug(s" + outermost object is a REPL line object, so we clone it: ${outerPairs.head}")
         } else {
           // The closure is ultimately nested inside a class; keep the object of that
           // class without cloning it since we don't want to clone the user's objects.
           // Note that we still need to keep around the outermost object itself because
           // we need it to clone its child closure later (see below).
-          logDebug(s" + outermost object is not a closure or REPL line object," +
-            s" so do not clone it: ${outermostClass}")
+          logDebug(" + outermost object is not a closure or REPL line object," +
+            "so do not clone it: " +  outerPairs.head)
           parent = outermostObject // e.g. SparkContext
           outerPairs = outerPairs.tail
         }
@@ -340,7 +341,7 @@ private[spark] object ClosureCleaner extends Logging {
       // Clone the closure objects themselves, nulling out any fields that are not
       // used in the closure we're working on or any of its inner closures.
       for ((cls, obj) <- outerPairs) {
-        logDebug(s" + cloning instance of class ${cls.getName}")
+        logDebug(s" + cloning the object $obj of class ${cls.getName}")
         // We null out these unused references by cloning each object and then filling in all
         // required fields from the original object. We need the parent here because the Java
         // language specification requires the first constructor parameter of any closure to be
@@ -350,7 +351,7 @@ private[spark] object ClosureCleaner extends Logging {
         // If transitive cleaning is enabled, we recursively clean any enclosing closure using
         // the already populated accessed fields map of the starting closure
         if (cleanTransitively && isClosure(clone.getClass)) {
-          logDebug(s" + cleaning cloned closure recursively (${cls.getName})")
+          logDebug(s" + cleaning cloned closure $clone recursively (${cls.getName})")
           // No need to check serializable here for the outer closures because we're
           // only interested in the serializability of the starting closure
           clean(clone, checkSerializable = false, cleanTransitively, accessedFields)
@@ -424,7 +425,7 @@ private[spark] class ReturnStatementInClosureException
   extends SparkException("Return statements aren't allowed in Spark closures")
 
 private class ReturnStatementFinder(targetMethodName: Option[String] = None)
-  extends ClassVisitor(ASM7) {
+  extends ClassVisitor(ASM6) {
   override def visitMethod(access: Int, name: String, desc: String,
       sig: String, exceptions: Array[String]): MethodVisitor = {
 
@@ -438,7 +439,7 @@ private class ReturnStatementFinder(targetMethodName: Option[String] = None)
       val isTargetMethod = targetMethodName.isEmpty ||
         name == targetMethodName.get || name == targetMethodName.get.stripSuffix("$adapted")
 
-      new MethodVisitor(ASM7) {
+      new MethodVisitor(ASM6) {
         override def visitTypeInsn(op: Int, tp: String) {
           if (op == NEW && tp.contains("scala/runtime/NonLocalReturnControl") && isTargetMethod) {
             throw new ReturnStatementInClosureException
@@ -446,7 +447,7 @@ private class ReturnStatementFinder(targetMethodName: Option[String] = None)
         }
       }
     } else {
-      new MethodVisitor(ASM7) {}
+      new MethodVisitor(ASM6) {}
     }
   }
 }
@@ -470,7 +471,7 @@ private[util] class FieldAccessFinder(
     findTransitively: Boolean,
     specificMethod: Option[MethodIdentifier[_]] = None,
     visitedMethods: Set[MethodIdentifier[_]] = Set.empty)
-  extends ClassVisitor(ASM7) {
+  extends ClassVisitor(ASM6) {
 
   override def visitMethod(
       access: Int,
@@ -485,7 +486,7 @@ private[util] class FieldAccessFinder(
       return null
     }
 
-    new MethodVisitor(ASM7) {
+    new MethodVisitor(ASM6) {
       override def visitFieldInsn(op: Int, owner: String, name: String, desc: String) {
         if (op == GETFIELD) {
           for (cl <- fields.keys if cl.getName == owner.replace('/', '.')) {
@@ -525,7 +526,7 @@ private[util] class FieldAccessFinder(
   }
 }
 
-private class InnerClosureFinder(output: Set[Class[_]]) extends ClassVisitor(ASM7) {
+private class InnerClosureFinder(output: Set[Class[_]]) extends ClassVisitor(ASM6) {
   var myName: String = null
 
   // TODO: Recursively find inner closures that we indirectly reference, e.g.
@@ -540,7 +541,7 @@ private class InnerClosureFinder(output: Set[Class[_]]) extends ClassVisitor(ASM
 
   override def visitMethod(access: Int, name: String, desc: String,
       sig: String, exceptions: Array[String]): MethodVisitor = {
-    new MethodVisitor(ASM7) {
+    new MethodVisitor(ASM6) {
       override def visitMethodInsn(
           op: Int, owner: String, name: String, desc: String, itf: Boolean) {
         val argTypes = Type.getArgumentTypes(desc)

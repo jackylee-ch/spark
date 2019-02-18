@@ -27,19 +27,10 @@ import org.apache.spark.sql.DataFrame
 /**
  * Evaluator for multiclass classification.
  *
- * @param predAndLabelsWithOptWeight an RDD of (prediction, label, weight) or
- *                         (prediction, label) pairs.
+ * @param predictionAndLabels an RDD of (prediction, label) pairs.
  */
 @Since("1.1.0")
-class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Product]) {
-  val predLabelsWeight: RDD[(Double, Double, Double)] = predAndLabelsWithOptWeight.map {
-    case (prediction: Double, label: Double, weight: Double) =>
-      (prediction, label, weight)
-    case (prediction: Double, label: Double) =>
-      (prediction, label, 1.0)
-    case other =>
-      throw new IllegalArgumentException(s"Expected tuples, got $other")
-  }
+class MulticlassMetrics @Since("1.1.0") (predictionAndLabels: RDD[(Double, Double)]) {
 
   /**
    * An auxiliary constructor taking a DataFrame.
@@ -48,29 +39,21 @@ class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Pr
   private[mllib] def this(predictionAndLabels: DataFrame) =
     this(predictionAndLabels.rdd.map(r => (r.getDouble(0), r.getDouble(1))))
 
-  private lazy val labelCountByClass: Map[Double, Double] =
-    predLabelsWeight.map {
-      case (_: Double, label: Double, weight: Double) =>
-        (label, weight)
+  private lazy val labelCountByClass: Map[Double, Long] = predictionAndLabels.values.countByValue()
+  private lazy val labelCount: Long = labelCountByClass.values.sum
+  private lazy val tpByClass: Map[Double, Int] = predictionAndLabels
+    .map { case (prediction, label) =>
+      (label, if (label == prediction) 1 else 0)
     }.reduceByKey(_ + _)
     .collectAsMap()
-  private lazy val labelCount: Double = labelCountByClass.values.sum
-  private lazy val tpByClass: Map[Double, Double] = predLabelsWeight
-    .map {
-      case (prediction: Double, label: Double, weight: Double) =>
-        (label, if (label == prediction) weight else 0.0)
+  private lazy val fpByClass: Map[Double, Int] = predictionAndLabels
+    .map { case (prediction, label) =>
+      (prediction, if (prediction != label) 1 else 0)
     }.reduceByKey(_ + _)
     .collectAsMap()
-  private lazy val fpByClass: Map[Double, Double] = predLabelsWeight
-    .map {
-      case (prediction: Double, label: Double, weight: Double) =>
-        (prediction, if (prediction != label) weight else 0.0)
-    }.reduceByKey(_ + _)
-    .collectAsMap()
-  private lazy val confusions = predLabelsWeight
-    .map {
-      case (prediction: Double, label: Double, weight: Double) =>
-        ((label, prediction), weight)
+  private lazy val confusions = predictionAndLabels
+    .map { case (prediction, label) =>
+      ((label, prediction), 1)
     }.reduceByKey(_ + _)
     .collectAsMap()
 
@@ -88,7 +71,7 @@ class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Pr
     while (i < n) {
       var j = 0
       while (j < n) {
-        values(i + j * n) = confusions.getOrElse((labels(i), labels(j)), 0.0)
+        values(i + j * n) = confusions.getOrElse((labels(i), labels(j)), 0).toDouble
         j += 1
       }
       i += 1
@@ -109,8 +92,8 @@ class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Pr
    */
   @Since("1.1.0")
   def falsePositiveRate(label: Double): Double = {
-    val fp = fpByClass.getOrElse(label, 0.0)
-    fp / (labelCount - labelCountByClass(label))
+    val fp = fpByClass.getOrElse(label, 0)
+    fp.toDouble / (labelCount - labelCountByClass(label))
   }
 
   /**
@@ -120,7 +103,7 @@ class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Pr
   @Since("1.1.0")
   def precision(label: Double): Double = {
     val tp = tpByClass(label)
-    val fp = fpByClass.getOrElse(label, 0.0)
+    val fp = fpByClass.getOrElse(label, 0)
     if (tp + fp == 0) 0 else tp.toDouble / (tp + fp)
   }
 
@@ -129,7 +112,7 @@ class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Pr
    * @param label the label.
    */
   @Since("1.1.0")
-  def recall(label: Double): Double = tpByClass(label) / labelCountByClass(label)
+  def recall(label: Double): Double = tpByClass(label).toDouble / labelCountByClass(label)
 
   /**
    * Returns f-measure for a given label (category)
@@ -152,12 +135,37 @@ class MulticlassMetrics @Since("1.1.0") (predAndLabelsWithOptWeight: RDD[_ <: Pr
   def fMeasure(label: Double): Double = fMeasure(label, 1.0)
 
   /**
+   * Returns precision
+   */
+  @Since("1.1.0")
+  @deprecated("Use accuracy.", "2.0.0")
+  lazy val precision: Double = accuracy
+
+  /**
+   * Returns recall
+   * (equals to precision for multiclass classifier
+   * because sum of all false positives is equal to sum
+   * of all false negatives)
+   */
+  @Since("1.1.0")
+  @deprecated("Use accuracy.", "2.0.0")
+  lazy val recall: Double = accuracy
+
+  /**
+   * Returns f-measure
+   * (equals to precision and recall because precision equals recall)
+   */
+  @Since("1.1.0")
+  @deprecated("Use accuracy.", "2.0.0")
+  lazy val fMeasure: Double = accuracy
+
+  /**
    * Returns accuracy
    * (equals to the total number of correctly classified instances
    * out of the total number of instances.)
    */
   @Since("2.0.0")
-  lazy val accuracy: Double = tpByClass.values.sum / labelCount
+  lazy val accuracy: Double = tpByClass.values.sum.toDouble / labelCount
 
   /**
    * Returns weighted true positive rate

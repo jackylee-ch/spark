@@ -21,9 +21,8 @@ SELF=$(cd $(dirname $0) && pwd)
 . "$SELF/release-util.sh"
 
 function exit_with_usage {
-  local NAME=$(basename $0)
   cat << EOF
-usage: $NAME
+usage: tag-release.sh
 Tags a Spark release on a particular branch.
 
 Inputs are specified with the following environment variables:
@@ -62,7 +61,7 @@ done
 init_java
 init_maven_sbt
 
-ASF_SPARK_REPO="gitbox.apache.org/repos/asf/spark.git"
+ASF_SPARK_REPO="git-wip-us.apache.org/repos/asf/spark.git"
 
 rm -rf spark
 git clone "https://$ASF_USERNAME:$ASF_PASSWORD@$ASF_SPARK_REPO" -b $GIT_BRANCH

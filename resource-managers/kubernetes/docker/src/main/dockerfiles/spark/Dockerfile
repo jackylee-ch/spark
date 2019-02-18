@@ -17,7 +17,8 @@
 
 FROM openjdk:8-alpine
 
-ARG spark_uid=185
+ARG spark_jars=jars
+ARG img_path=kubernetes/dockerfiles
 
 # Before building the docker image, first build and make a Spark distribution following
 # the instructions in http://spark.apache.org/docs/latest/building-spark.html.
@@ -28,9 +29,8 @@ ARG spark_uid=185
 
 RUN set -ex && \
     apk upgrade --no-cache && \
-    apk add --no-cache bash tini libc6-compat linux-pam krb5 krb5-libs && \
+    apk add --no-cache bash tini libc6-compat linux-pam && \
     mkdir -p /opt/spark && \
-    mkdir -p /opt/spark/examples && \
     mkdir -p /opt/spark/work-dir && \
     touch /opt/spark/RELEASE && \
     rm /bin/sh && \
@@ -38,10 +38,10 @@ RUN set -ex && \
     echo "auth required pam_wheel.so use_uid" >> /etc/pam.d/su && \
     chgrp root /etc/passwd && chmod ug+rw /etc/passwd
 
-COPY jars /opt/spark/jars
+COPY ${spark_jars} /opt/spark/jars
 COPY bin /opt/spark/bin
 COPY sbin /opt/spark/sbin
-COPY kubernetes/dockerfiles/spark/entrypoint.sh /opt/
+COPY ${img_path}/spark/entrypoint.sh /opt/
 COPY examples /opt/spark/examples
 COPY kubernetes/tests /opt/spark/tests
 COPY data /opt/spark/data
@@ -49,9 +49,5 @@ COPY data /opt/spark/data
 ENV SPARK_HOME /opt/spark
 
 WORKDIR /opt/spark/work-dir
-RUN chmod g+w /opt/spark/work-dir
 
 ENTRYPOINT [ "/opt/entrypoint.sh" ]
-
-# Specify the User that the actual main process will run as
-USER ${spark_uid}

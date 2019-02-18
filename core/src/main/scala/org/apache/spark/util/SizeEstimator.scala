@@ -28,7 +28,6 @@ import com.google.common.collect.MapMaker
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.Tests.TEST_USE_COMPRESSED_OOPS_KEY
 import org.apache.spark.util.collection.OpenHashSet
 
 /**
@@ -127,8 +126,8 @@ object SizeEstimator extends Logging {
   private def getIsCompressedOops: Boolean = {
     // This is only used by tests to override the detection of compressed oops. The test
     // actually uses a system property instead of a SparkConf, so we'll stick with that.
-    if (System.getProperty(TEST_USE_COMPRESSED_OOPS_KEY) != null) {
-      return System.getProperty(TEST_USE_COMPRESSED_OOPS_KEY).toBoolean
+    if (System.getProperty("spark.test.useCompressedOops") != null) {
+      return System.getProperty("spark.test.useCompressedOops").toBoolean
     }
 
     // java.vm.info provides compressed ref info for IBM JDKs

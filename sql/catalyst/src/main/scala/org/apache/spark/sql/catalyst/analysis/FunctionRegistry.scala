@@ -25,7 +25,6 @@ import scala.language.existentials
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 
-import org.apache.spark.internal.Logging
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.FunctionIdentifier
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry.FunctionBuilder
@@ -88,7 +87,7 @@ trait FunctionRegistry {
   override def clone(): FunctionRegistry = throw new CloneNotSupportedException()
 }
 
-class SimpleFunctionRegistry extends FunctionRegistry with Logging {
+class SimpleFunctionRegistry extends FunctionRegistry {
 
   @GuardedBy("this")
   private val functionBuilders =
@@ -104,13 +103,7 @@ class SimpleFunctionRegistry extends FunctionRegistry with Logging {
       name: FunctionIdentifier,
       info: ExpressionInfo,
       builder: FunctionBuilder): Unit = synchronized {
-    val normalizedName = normalizeFuncName(name)
-    val newFunction = (info, builder)
-    functionBuilders.put(normalizedName, newFunction) match {
-      case Some(previousFunction) if previousFunction != newFunction =>
-        logWarning(s"The function $normalizedName replaced a previously registered function.")
-      case _ =>
-    }
+    functionBuilders.put(normalizeFuncName(name), (info, builder))
   }
 
   override def lookupFunction(name: FunctionIdentifier, children: Seq[Expression]): Expression = {
@@ -307,9 +300,6 @@ object FunctionRegistry {
     expression[CollectList]("collect_list"),
     expression[CollectSet]("collect_set"),
     expression[CountMinSketchAgg]("count_min_sketch"),
-    expression[EveryAgg]("every"),
-    expression[AnyAgg]("any"),
-    expression[SomeAgg]("some"),
 
     // string functions
     expression[Ascii]("ascii"),
@@ -530,12 +520,7 @@ object FunctionRegistry {
     castAlias("date", DateType),
     castAlias("timestamp", TimestampType),
     castAlias("binary", BinaryType),
-    castAlias("string", StringType),
-
-    // csv
-    expression[CsvToStructs]("from_csv"),
-    expression[SchemaOfCsv]("schema_of_csv"),
-    expression[StructsToCsv]("to_csv")
+    castAlias("string", StringType)
   )
 
   val builtin: SimpleFunctionRegistry = {

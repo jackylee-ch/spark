@@ -17,7 +17,6 @@
 
 package org.apache.spark.sql.catalyst.analysis
 
-import org.apache.spark.sql.catalyst.QueryPlanningTracker
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.expressions._
@@ -35,7 +34,6 @@ class ResolvedUuidExpressionsSuite extends AnalysisTest {
   private lazy val uuid3 = Uuid().as('_uuid3)
   private lazy val uuid1Ref = uuid1.toAttribute
 
-  private val tracker = new QueryPlanningTracker
   private val analyzer = getAnalyzer(caseSensitive = true)
 
   private def getUuidExpressions(plan: LogicalPlan): Seq[Uuid] = {
@@ -49,7 +47,7 @@ class ResolvedUuidExpressionsSuite extends AnalysisTest {
 
   test("analyzed plan sets random seed for Uuid expression") {
     val plan = r.select(a, uuid1)
-    val resolvedPlan = analyzer.executeAndCheck(plan, tracker)
+    val resolvedPlan = analyzer.executeAndCheck(plan)
     getUuidExpressions(resolvedPlan).foreach { u =>
       assert(u.resolved)
       assert(u.randomSeed.isDefined)
@@ -58,14 +56,14 @@ class ResolvedUuidExpressionsSuite extends AnalysisTest {
 
   test("Uuid expressions should have different random seeds") {
     val plan = r.select(a, uuid1).groupBy(uuid1Ref)(uuid2, uuid3)
-    val resolvedPlan = analyzer.executeAndCheck(plan, tracker)
+    val resolvedPlan = analyzer.executeAndCheck(plan)
     assert(getUuidExpressions(resolvedPlan).map(_.randomSeed.get).distinct.length == 3)
   }
 
   test("Different analyzed plans should have different random seeds in Uuids") {
     val plan = r.select(a, uuid1).groupBy(uuid1Ref)(uuid2, uuid3)
-    val resolvedPlan1 = analyzer.executeAndCheck(plan, tracker)
-    val resolvedPlan2 = analyzer.executeAndCheck(plan, tracker)
+    val resolvedPlan1 = analyzer.executeAndCheck(plan)
+    val resolvedPlan2 = analyzer.executeAndCheck(plan)
     val uuids1 = getUuidExpressions(resolvedPlan1)
     val uuids2 = getUuidExpressions(resolvedPlan2)
     assert(uuids1.distinct.length == 3)

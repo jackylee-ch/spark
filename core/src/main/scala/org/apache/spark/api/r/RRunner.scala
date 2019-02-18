@@ -27,8 +27,6 @@ import scala.util.Try
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.BUFFER_SIZE
-import org.apache.spark.internal.config.R._
 import org.apache.spark.util.Utils
 
 /**
@@ -45,7 +43,7 @@ private[spark] class RRunner[U](
     colNames: Array[String] = null,
     mode: Int = RRunnerModes.RDD)
   extends Logging {
-  protected var bootTime: Double = _
+  private var bootTime: Double = _
   private var dataStream: DataInputStream = _
   val readData = numPartitions match {
     case -1 =>
@@ -91,70 +89,28 @@ private[spark] class RRunner[U](
     }
 
     try {
-      newReaderIterator(dataStream, errThread)
+      return new Iterator[U] {
+        def next(): U = {
+          val obj = _nextObj
+          if (hasNext) {
+            _nextObj = read()
+          }
+          obj
+        }
+
+        var _nextObj = read()
+
+        def hasNext(): Boolean = {
+          val hasMore = (_nextObj != null)
+          if (!hasMore) {
+            dataStream.close()
+          }
+          hasMore
+        }
+      }
     } catch {
       case e: Exception =>
-        throw new SparkException("R computation failed with\n " + errThread.getLines(), e)
-    }
-  }
-
-  protected def newReaderIterator(
-      dataStream: DataInputStream, errThread: BufferedStreamThread): Iterator[U] = {
-    new Iterator[U] {
-      def next(): U = {
-        val obj = _nextObj
-        if (hasNext()) {
-          _nextObj = read()
-        }
-        obj
-      }
-
-      private var _nextObj = read()
-
-      def hasNext(): Boolean = {
-        val hasMore = _nextObj != null
-        if (!hasMore) {
-          dataStream.close()
-        }
-        hasMore
-      }
-    }
-  }
-
-  protected def writeData(
-      dataOut: DataOutputStream,
-      printOut: PrintStream,
-      iter: Iterator[_]): Unit = {
-    def writeElem(elem: Any): Unit = {
-      if (deserializer == SerializationFormats.BYTE) {
-        val elemArr = elem.asInstanceOf[Array[Byte]]
-        dataOut.writeInt(elemArr.length)
-        dataOut.write(elemArr)
-      } else if (deserializer == SerializationFormats.ROW) {
-        dataOut.write(elem.asInstanceOf[Array[Byte]])
-      } else if (deserializer == SerializationFormats.STRING) {
-        // write string(for StringRRDD)
-        // scalastyle:off println
-        printOut.println(elem)
-        // scalastyle:on println
-      }
-    }
-
-    for (elem <- iter) {
-      elem match {
-        case (key, innerIter: Iterator[_]) =>
-          for (innerElem <- innerIter) {
-            writeElem(innerElem)
-          }
-          // Writes key which can be used as a boundary in group-aggregate
-          dataOut.writeByte('r')
-          writeElem(key)
-        case (key, value) =>
-          writeElem(key)
-          writeElem(value)
-        case _ =>
-          writeElem(elem)
-      }
+        throw new SparkException("R computation failed with\n " + errThread.getLines())
     }
   }
 
@@ -167,8 +123,7 @@ private[spark] class RRunner[U](
       partitionIndex: Int): Unit = {
     val env = SparkEnv.get
     val taskContext = TaskContext.get()
-    val bufferSize = System.getProperty(BUFFER_SIZE.key,
-      BUFFER_SIZE.defaultValueString).toInt
+    val bufferSize = System.getProperty("spark.buffer.size", "65536").toInt
     val stream = new BufferedOutputStream(output, bufferSize)
 
     new Thread("writer for R") {
@@ -213,7 +168,37 @@ private[spark] class RRunner[U](
 
           val printOut = new PrintStream(stream)
 
-          writeData(dataOut, printOut, iter)
+          def writeElem(elem: Any): Unit = {
+            if (deserializer == SerializationFormats.BYTE) {
+              val elemArr = elem.asInstanceOf[Array[Byte]]
+              dataOut.writeInt(elemArr.length)
+              dataOut.write(elemArr)
+            } else if (deserializer == SerializationFormats.ROW) {
+              dataOut.write(elem.asInstanceOf[Array[Byte]])
+            } else if (deserializer == SerializationFormats.STRING) {
+              // write string(for StringRRDD)
+              // scalastyle:off println
+              printOut.println(elem)
+              // scalastyle:on println
+            }
+          }
+
+          for (elem <- iter) {
+            elem match {
+              case (key, innerIter: Iterator[_]) =>
+                for (innerElem <- innerIter) {
+                  writeElem(innerElem)
+                }
+                // Writes key which can be used as a boundary in group-aggregate
+                dataOut.writeByte('r')
+                writeElem(key)
+              case (key, value) =>
+                writeElem(key)
+                writeElem(value)
+              case _ =>
+                writeElem(elem)
+            }
+          }
 
           stream.flush()
         } catch {
@@ -273,7 +258,7 @@ private[spark] class RRunner[U](
     }
   }
 
-  protected def readByteArrayData(length: Int): Array[Byte] = {
+  private def readByteArrayData(length: Int): Array[Byte] = {
     length match {
       case length if length > 0 =>
         val obj = new Array[Byte](length)
@@ -292,7 +277,7 @@ private[spark] class RRunner[U](
   }
 }
 
-private[spark] object SpecialLengths {
+private object SpecialLengths {
   val TIMING_DATA = -1
 }
 
@@ -302,7 +287,7 @@ private[spark] object RRunnerModes {
   val DATAFRAME_GAPPLY = 2
 }
 
-private[spark] class BufferedStreamThread(
+private[r] class BufferedStreamThread(
     in: InputStream,
     name: String,
     errBufferSize: Int) extends Thread(name) with Logging {
@@ -355,10 +340,11 @@ private[r] object RRunner {
     // "spark.sparkr.r.command" is deprecated and replaced by "spark.r.command",
     // but kept here for backward compatibility.
     val sparkConf = SparkEnv.get.conf
-    var rCommand = sparkConf.get(SPARKR_COMMAND)
-    rCommand = sparkConf.get(R_COMMAND).orElse(Some(rCommand)).get
+    var rCommand = sparkConf.get("spark.sparkr.r.command", "Rscript")
+    rCommand = sparkConf.get("spark.r.command", rCommand)
 
-    val rConnectionTimeout = sparkConf.get(R_BACKEND_CONNECTION_TIMEOUT)
+    val rConnectionTimeout = sparkConf.getInt(
+      "spark.r.backendConnectionTimeout", SparkRDefaults.DEFAULT_CONNECTION_TIMEOUT)
     val rOptions = "--vanilla"
     val rLibDir = RUtils.sparkRPackagePath(isDriver = false)
     val rExecScript = rLibDir(0) + "/SparkR/worker/" + script

@@ -20,13 +20,14 @@ import scala.collection.JavaConverters._
 
 import io.fabric8.kubernetes.api.model.{ContainerBuilder, EnvVarBuilder, HasMetadata}
 
-import org.apache.spark.deploy.k8s.{KubernetesConf, SparkPod}
+import org.apache.spark.deploy.k8s.{KubernetesConf, KubernetesRoleSpecificConf, SparkPod}
 
-private[spark] class EnvSecretsFeatureStep(kubernetesConf: KubernetesConf)
+private[spark] class EnvSecretsFeatureStep(
+    kubernetesConf: KubernetesConf[_ <: KubernetesRoleSpecificConf])
   extends KubernetesFeatureConfigStep {
   override def configurePod(pod: SparkPod): SparkPod = {
     val addedEnvSecrets = kubernetesConf
-      .secretEnvNamesToKeyRefs
+      .roleSecretEnvNamesToKeyRefs
       .map{ case (envName, keyRef) =>
         // Keyref parts
         val keyRefParts = keyRef.split(":")
@@ -49,4 +50,8 @@ private[spark] class EnvSecretsFeatureStep(kubernetesConf: KubernetesConf)
       .build()
     SparkPod(pod.pod, containerWithEnvVars)
   }
+
+  override def getAdditionalPodSystemProperties(): Map[String, String] = Map.empty
+
+  override def getAdditionalKubernetesResources(): Seq[HasMetadata] = Seq.empty
 }

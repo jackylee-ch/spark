@@ -44,7 +44,7 @@ object SizeInBytesOnlyStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
     }
 
     // Don't propagate rowCount and attributeStats, since they are not estimated here.
-    Statistics(sizeInBytes = sizeInBytes)
+    Statistics(sizeInBytes = sizeInBytes, hints = p.child.stats.hints)
   }
 
   /**
@@ -60,7 +60,8 @@ object SizeInBytesOnlyStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
     if (p.groupingExpressions.isEmpty) {
       Statistics(
         sizeInBytes = EstimationUtils.getOutputSize(p.output, outputRowCount = 1),
-        rowCount = Some(1))
+        rowCount = Some(1),
+        hints = p.child.stats.hints)
     } else {
       visitUnaryNode(p)
     }
@@ -86,15 +87,19 @@ object SizeInBytesOnlyStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
     // Don't propagate column stats, because we don't know the distribution after limit
     Statistics(
       sizeInBytes = EstimationUtils.getOutputSize(p.output, rowCount, childStats.attributeStats),
-      rowCount = Some(rowCount))
+      rowCount = Some(rowCount),
+      hints = childStats.hints)
   }
+
+  override def visitHint(p: ResolvedHint): Statistics = p.child.stats.copy(hints = p.hints)
 
   override def visitIntersect(p: Intersect): Statistics = {
     val leftSize = p.left.stats.sizeInBytes
     val rightSize = p.right.stats.sizeInBytes
     val sizeInBytes = if (leftSize < rightSize) leftSize else rightSize
     Statistics(
-      sizeInBytes = sizeInBytes)
+      sizeInBytes = sizeInBytes,
+      hints = p.left.stats.hints.resetForJoin())
   }
 
   override def visitJoin(p: Join): Statistics = {
@@ -103,7 +108,10 @@ object SizeInBytesOnlyStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
         // LeftSemi and LeftAnti won't ever be bigger than left
         p.left.stats
       case _ =>
-        default(p)
+        // Make sure we don't propagate isBroadcastable in other joins, because
+        // they could explode the size.
+        val stats = default(p)
+        stats.copy(hints = stats.hints.resetForJoin())
     }
   }
 
@@ -113,7 +121,7 @@ object SizeInBytesOnlyStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
     if (limit == 0) {
       // sizeInBytes can't be zero, or sizeInBytes of BinaryNode will also be zero
       // (product of children).
-      Statistics(sizeInBytes = 1, rowCount = Some(0))
+      Statistics(sizeInBytes = 1, rowCount = Some(0), hints = childStats.hints)
     } else {
       // The output row count of LocalLimit should be the sum of row counts from each partition.
       // However, since the number of partitions is not available here, we just use statistics of
@@ -139,7 +147,7 @@ object SizeInBytesOnlyStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
     }
     val sampleRows = p.child.stats.rowCount.map(c => EstimationUtils.ceil(BigDecimal(c) * ratio))
     // Don't propagate column stats, because we don't know the distribution after a sample operation
-    Statistics(sizeInBytes, sampleRows)
+    Statistics(sizeInBytes, sampleRows, hints = p.child.stats.hints)
   }
 
   override def visitScriptTransform(p: ScriptTransformation): Statistics = default(p)

@@ -197,7 +197,7 @@ trait Block extends TreeNode[Block] with JavaCode {
     case _ => code"$this\n$other"
   }
 
-  override def verboseString(maxFields: Int): String = toString
+  override def verboseString: String = toString
 }
 
 object Block {

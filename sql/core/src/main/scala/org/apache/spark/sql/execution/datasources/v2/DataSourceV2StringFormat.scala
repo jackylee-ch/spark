@@ -20,7 +20,6 @@ package org.apache.spark.sql.execution.datasources.v2
 import org.apache.commons.lang3.StringUtils
 
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
-import org.apache.spark.sql.catalyst.util.truncatedString
 import org.apache.spark.sql.sources.DataSourceRegister
 import org.apache.spark.sql.sources.v2.DataSourceV2
 import org.apache.spark.util.Utils
@@ -59,7 +58,7 @@ trait DataSourceV2StringFormat {
     case _ => Utils.getSimpleName(source.getClass)
   }
 
-  def metadataString(maxFields: Int): String = {
+  def metadataString: String = {
     val entries = scala.collection.mutable.ArrayBuffer.empty[(String, String)]
 
     if (pushedFilters.nonEmpty) {
@@ -73,12 +72,12 @@ trait DataSourceV2StringFormat {
       }.mkString("[", ",", "]")
     }
 
-    val outputStr = truncatedString(output, "[", ", ", "]", maxFields)
+    val outputStr = Utils.truncatedString(output, "[", ", ", "]")
 
     val entriesStr = if (entries.nonEmpty) {
-      truncatedString(entries.map {
+      Utils.truncatedString(entries.map {
         case (key, value) => key + ": " + StringUtils.abbreviate(value, 100)
-      }, " (", ", ", ")", maxFields)
+      }, " (", ", ", ")")
     } else {
       ""
     }

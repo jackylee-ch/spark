@@ -31,6 +31,7 @@ import java.security.SecureRandom
 import java.util.{Locale, Properties, Random, UUID}
 import java.util.concurrent._
 import java.util.concurrent.TimeUnit.NANOSECONDS
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.GZIPInputStream
 
 import scala.annotation.tailrec
@@ -60,9 +61,6 @@ import org.apache.spark._
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.internal.config._
-import org.apache.spark.internal.config.Tests.IS_TESTING
-import org.apache.spark.internal.config.UI._
-import org.apache.spark.internal.config.Worker._
 import org.apache.spark.launcher.SparkLauncher
 import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.serializer.{DeserializationStream, SerializationStream, SerializerInstance}
@@ -95,8 +93,52 @@ private[spark] object Utils extends Logging {
   private val MAX_DIR_CREATION_ATTEMPTS: Int = 10
   @volatile private var localRootDirs: Array[String] = null
 
-  /** Scheme used for files that are locally available on worker nodes in the cluster. */
-  val LOCAL_SCHEME = "local"
+  /**
+   * The performance overhead of creating and logging strings for wide schemas can be large. To
+   * limit the impact, we bound the number of fields to include by default. This can be overridden
+   * by setting the 'spark.debug.maxToStringFields' conf in SparkEnv.
+   */
+  val DEFAULT_MAX_TO_STRING_FIELDS = 25
+
+  private[spark] def maxNumToStringFields = {
+    if (SparkEnv.get != null) {
+      SparkEnv.get.conf.getInt("spark.debug.maxToStringFields", DEFAULT_MAX_TO_STRING_FIELDS)
+    } else {
+      DEFAULT_MAX_TO_STRING_FIELDS
+    }
+  }
+
+  /** Whether we have warned about plan string truncation yet. */
+  private val truncationWarningPrinted = new AtomicBoolean(false)
+
+  /**
+   * Format a sequence with semantics similar to calling .mkString(). Any elements beyond
+   * maxNumToStringFields will be dropped and replaced by a "... N more fields" placeholder.
+   *
+   * @return the trimmed and formatted string.
+   */
+  def truncatedString[T](
+      seq: Seq[T],
+      start: String,
+      sep: String,
+      end: String,
+      maxNumFields: Int = maxNumToStringFields): String = {
+    if (seq.length > maxNumFields) {
+      if (truncationWarningPrinted.compareAndSet(false, true)) {
+        logWarning(
+          "Truncated the string representation of a plan since it was too large. This " +
+          "behavior can be adjusted by setting 'spark.debug.maxToStringFields' in SparkEnv.conf.")
+      }
+      val numFields = math.max(0, maxNumFields - 1)
+      seq.take(numFields).mkString(
+        start, sep, sep + "... " + (seq.length - numFields) + " more fields" + end)
+    } else {
+      seq.mkString(start, sep, end)
+    }
+  }
+
+  /** Shorthand for calling truncatedString() without start or end strings. */
+  def truncatedString[T](seq: Seq[T], sep: String): String = truncatedString(seq, "", sep, "")
 
   /** Serialize an object using Java serialization */
   def serialize[T](o: T): Array[Byte] = {
@@ -812,7 +854,7 @@ private[spark] object Utils extends Logging {
     } else {
       if (conf.getenv("MESOS_SANDBOX") != null && shuffleServiceEnabled) {
         logInfo("MESOS_SANDBOX available but not using provided Mesos sandbox because " +
-          s"${config.SHUFFLE_SERVICE_ENABLED.key} is enabled.")
+          "spark.shuffle.service.enabled is enabled.")
       }
       // In non-Yarn mode (or for the driver in yarn-client mode), we cannot trust the user
       // configuration to point to a secure directory. So create a subdirectory with restricted
@@ -1005,10 +1047,9 @@ private[spark] object Utils extends Logging {
 
   /**
    * Return the string to tell how long has passed in milliseconds.
-   * @param startTimeNs - a timestamp in nanoseconds returned by `System.nanoTime`.
    */
-  def getUsedTimeNs(startTimeNs: Long): String = {
-    s"${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNs)} ms"
+  def getUsedTimeMs(startTimeMs: Long): String = {
+    " " + (System.currentTimeMillis - startTimeMs) + " ms"
   }
 
   /**
@@ -1044,7 +1085,7 @@ private[spark] object Utils extends Logging {
   }
 
   /**
-   * Convert a time parameter such as (50s, 100ms, or 250us) to milliseconds for internal use. If
+   * Convert a time parameter such as (50s, 100ms, or 250us) to microseconds for internal use. If
    * no suffix is provided, the passed number is assumed to be in ms.
    */
   def timeStringAsMs(str: String): Long = {
@@ -1099,41 +1140,41 @@ private[spark] object Utils extends Logging {
    * Convert a Java memory parameter passed to -Xmx (such as 300m or 1g) to a number of mebibytes.
    */
   def memoryStringToMb(str: String): Int = {
-    // Convert to bytes, rather than directly to MiB, because when no units are specified the unit
+    // Convert to bytes, rather than directly to MB, because when no units are specified the unit
     // is assumed to be bytes
     (JavaUtils.byteStringAsBytes(str) / 1024 / 1024).toInt
   }
 
   /**
-   * Convert a quantity in bytes to a human-readable string such as "4.0 MiB".
+   * Convert a quantity in bytes to a human-readable string such as "4.0 MB".
    */
   def bytesToString(size: Long): String = bytesToString(BigInt(size))
 
   def bytesToString(size: BigInt): String = {
-    val EiB = 1L << 60
-    val PiB = 1L << 50
-    val TiB = 1L << 40
-    val GiB = 1L << 30
-    val MiB = 1L << 20
-    val KiB = 1L << 10
+    val EB = 1L << 60
+    val PB = 1L << 50
+    val TB = 1L << 40
+    val GB = 1L << 30
+    val MB = 1L << 20
+    val KB = 1L << 10
 
-    if (size >= BigInt(1L << 11) * EiB) {
+    if (size >= BigInt(1L << 11) * EB) {
       // The number is too large, show it in scientific notation.
       BigDecimal(size, new MathContext(3, RoundingMode.HALF_UP)).toString() + " B"
     } else {
       val (value, unit) = {
-        if (size >= 2 * EiB) {
-          (BigDecimal(size) / EiB, "EiB")
-        } else if (size >= 2 * PiB) {
-          (BigDecimal(size) / PiB, "PiB")
-        } else if (size >= 2 * TiB) {
-          (BigDecimal(size) / TiB, "TiB")
-        } else if (size >= 2 * GiB) {
-          (BigDecimal(size) / GiB, "GiB")
-        } else if (size >= 2 * MiB) {
-          (BigDecimal(size) / MiB, "MiB")
-        } else if (size >= 2 * KiB) {
-          (BigDecimal(size) / KiB, "KiB")
+        if (size >= 2 * EB) {
+          (BigDecimal(size) / EB, "EB")
+        } else if (size >= 2 * PB) {
+          (BigDecimal(size) / PB, "PB")
+        } else if (size >= 2 * TB) {
+          (BigDecimal(size) / TB, "TB")
+        } else if (size >= 2 * GB) {
+          (BigDecimal(size) / GB, "GB")
+        } else if (size >= 2 * MB) {
+          (BigDecimal(size) / MB, "MB")
+        } else if (size >= 2 * KB) {
+          (BigDecimal(size) / KB, "KB")
         } else {
           (BigDecimal(size), "B")
         }
@@ -1164,7 +1205,7 @@ private[spark] object Utils extends Logging {
   }
 
   /**
-   * Convert a quantity in megabytes to a human-readable string such as "4.0 MiB".
+   * Convert a quantity in megabytes to a human-readable string such as "4.0 MB".
    */
   def megabytesToString(megabytes: Long): String = {
     bytesToString(megabytes * 1024L * 1024L)
@@ -1459,12 +1500,16 @@ private[spark] object Utils extends Logging {
     CallSite(shortForm, longForm)
   }
 
+  private val UNCOMPRESSED_LOG_FILE_LENGTH_CACHE_SIZE_CONF =
+    "spark.worker.ui.compressedLogFileLengthCacheSize"
+  private val DEFAULT_UNCOMPRESSED_LOG_FILE_LENGTH_CACHE_SIZE = 100
   private var compressedLogFileLengthCache: LoadingCache[String, java.lang.Long] = null
   private def getCompressedLogFileLengthCache(
       sparkConf: SparkConf): LoadingCache[String, java.lang.Long] = this.synchronized {
     if (compressedLogFileLengthCache == null) {
-      val compressedLogFileLengthCacheSize = sparkConf.get(
-        UNCOMPRESSED_LOG_FILE_LENGTH_CACHE_SIZE_CONF)
+      val compressedLogFileLengthCacheSize = sparkConf.getInt(
+        UNCOMPRESSED_LOG_FILE_LENGTH_CACHE_SIZE_CONF,
+        DEFAULT_UNCOMPRESSED_LOG_FILE_LENGTH_CACHE_SIZE)
       compressedLogFileLengthCache = CacheBuilder.newBuilder()
         .maximumSize(compressedLogFileLengthCacheSize)
         .build[String, java.lang.Long](new CacheLoader[String, java.lang.Long]() {
@@ -1739,23 +1784,23 @@ private[spark] object Utils extends Logging {
    *
    * @param numIters number of iterations
    * @param f function to be executed. If prepare is not None, the running time of each call to f
-   *          must be an order of magnitude longer than one nanosecond for accurate timing.
+   *          must be an order of magnitude longer than one millisecond for accurate timing.
    * @param prepare function to be executed before each call to f. Its running time doesn't count.
-   * @return the total time across all iterations (not counting preparation time) in nanoseconds.
+   * @return the total time across all iterations (not counting preparation time)
    */
   def timeIt(numIters: Int)(f: => Unit, prepare: Option[() => Unit] = None): Long = {
     if (prepare.isEmpty) {
-      val startNs = System.nanoTime()
+      val start = System.currentTimeMillis
       times(numIters)(f)
-      System.nanoTime() - startNs
+      System.currentTimeMillis - start
     } else {
       var i = 0
       var sum = 0L
       while (i < numIters) {
         prepare.get.apply()
-        val startNs = System.nanoTime()
+        val start = System.currentTimeMillis
         f
-        sum += System.nanoTime() - startNs
+        sum += System.currentTimeMillis - start
         i += 1
       }
       sum
@@ -1847,7 +1892,7 @@ private[spark] object Utils extends Logging {
    * Indicates whether Spark is currently running unit tests.
    */
   def isTesting: Boolean = {
-    sys.env.contains("SPARK_TESTING") || sys.props.contains(IS_TESTING.key)
+    sys.env.contains("SPARK_TESTING") || sys.props.contains("spark.testing")
   }
 
   /**
@@ -2175,7 +2220,7 @@ private[spark] object Utils extends Logging {
    */
   def portMaxRetries(conf: SparkConf): Int = {
     val maxRetries = conf.getOption("spark.port.maxRetries").map(_.toInt)
-    if (conf.contains(IS_TESTING)) {
+    if (conf.contains("spark.testing")) {
       // Set a higher number of retries for tests...
       maxRetries.getOrElse(100)
     } else {
@@ -2231,7 +2276,7 @@ private[spark] object Utils extends Logging {
               s"${e.getMessage}: Service$serviceString failed after " +
                 s"$maxRetries retries (on a random free port)! " +
                 s"Consider explicitly setting the appropriate binding address for " +
-                s"the service$serviceString (for example ${DRIVER_BIND_ADDRESS.key} " +
+                s"the service$serviceString (for example spark.driver.bindAddress " +
                 s"for SparkDriver) to the correct binding address."
             } else {
               s"${e.getMessage}: Service$serviceString failed after " +
@@ -2283,10 +2328,7 @@ private[spark] object Utils extends Logging {
    * configure a new log4j level
    */
   def setLogLevel(l: org.apache.log4j.Level) {
-    val rootLogger = org.apache.log4j.Logger.getRootLogger()
-    rootLogger.setLevel(l)
-    // Setting threshold to null as rootLevel will define log level for spark-shell
-    Logging.sparkShellThresholdLevel = null
+    org.apache.log4j.Logger.getRootLogger().setLevel(l)
   }
 
   /**
@@ -2384,11 +2426,11 @@ private[spark] object Utils extends Logging {
 
   // Returns the groups to which the current user belongs.
   def getCurrentUserGroups(sparkConf: SparkConf, username: String): Set[String] = {
-    val groupProviderClassName = sparkConf.get(USER_GROUPS_MAPPING)
+    val groupProviderClassName = sparkConf.get("spark.user.groups.mapping",
+      "org.apache.spark.security.ShellBasedGroupsMappingProvider")
     if (groupProviderClassName != "") {
       try {
-        val groupMappingServiceProvider = classForName(groupProviderClassName).
-          getConstructor().newInstance().
+        val groupMappingServiceProvider = classForName(groupProviderClassName).newInstance.
           asInstanceOf[org.apache.spark.security.GroupMappingServiceProvider]
         val currentUserGroups = groupMappingServiceProvider.getGroups(username)
         return currentUserGroups
@@ -2464,9 +2506,9 @@ private[spark] object Utils extends Logging {
    * Return whether dynamic allocation is enabled in the given conf.
    */
   def isDynamicAllocationEnabled(conf: SparkConf): Boolean = {
-    val dynamicAllocationEnabled = conf.get(DYN_ALLOCATION_ENABLED)
+    val dynamicAllocationEnabled = conf.getBoolean("spark.dynamicAllocation.enabled", false)
     dynamicAllocationEnabled &&
-      (!isLocalMaster(conf) || conf.get(DYN_ALLOCATION_TESTING))
+      (!isLocalMaster(conf) || conf.getBoolean("spark.dynamicAllocation.testing", false))
   }
 
   /**
@@ -2531,7 +2573,8 @@ private[spark] object Utils extends Logging {
    * has its own mechanism to distribute jars.
    */
   def getUserJars(conf: SparkConf): Seq[String] = {
-    conf.get(JARS).filter(_.nonEmpty)
+    val sparkJars = conf.getOption("spark.jars")
+    sparkJars.map(_.split(",")).map(_.filter(_.nonEmpty)).toSeq.flatten
   }
 
   /**
@@ -2693,7 +2736,7 @@ private[spark] object Utils extends Logging {
     }
 
     val masterScheme = new URI(masterWithoutK8sPrefix).getScheme
-    val resolvedURL = masterScheme.toLowerCase(Locale.ROOT) match {
+    val resolvedURL = masterScheme.toLowerCase match {
       case "https" =>
         masterWithoutK8sPrefix
       case "http" =>
@@ -2736,17 +2779,13 @@ private[spark] object Utils extends Logging {
 
   /**
    * Safer than Class obj's getSimpleName which may throw Malformed class name error in scala.
-   * This method mimics scalatest's getSimpleNameOfAnObjectsClass.
+   * This method mimicks scalatest's getSimpleNameOfAnObjectsClass.
    */
   def getSimpleName(cls: Class[_]): String = {
     try {
-      cls.getSimpleName
+      return cls.getSimpleName
     } catch {
-      // TODO: the value returned here isn't even quite right; it returns simple names
-      // like UtilsSuite$MalformedClassObject$MalformedClass instead of MalformedClass
-      // The exact value may not matter much as it's used in log statements
-      case _: InternalError =>
-        stripDollars(stripPackages(cls.getName))
+      case err: InternalError => return stripDollars(stripPackages(cls.getName))
     }
   }
 
@@ -2823,19 +2862,6 @@ private[spark] object Utils extends Logging {
    */
   def stringHalfWidth(str: String): Int = {
     if (str == null) 0 else str.length + fullWidthRegex.findAllIn(str).size
-  }
-
-  def sanitizeDirName(str: String): String = {
-    str.replaceAll("[ :/]", "-").replaceAll("[.${}'\"]", "_").toLowerCase(Locale.ROOT)
-  }
-
-  def isClientMode(conf: SparkConf): Boolean = {
-    "client".equals(conf.get(SparkLauncher.DEPLOY_MODE, "client"))
-  }
-
-  /** Returns whether the URI is a "local:" URI. */
-  def isLocalUri(uri: String): Boolean = {
-    uri.startsWith(s"$LOCAL_SCHEME:")
   }
 }
 

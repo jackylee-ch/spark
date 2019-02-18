@@ -17,6 +17,8 @@
 
 package org.apache.spark.ml.feature
 
+import scala.beans.{BeanInfo, BeanProperty}
+
 import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml.attribute._
@@ -24,7 +26,7 @@ import org.apache.spark.ml.linalg.{SparseVector, Vector, Vectors}
 import org.apache.spark.ml.param.ParamsSuite
 import org.apache.spark.ml.util.{DefaultReadWriteTest, MLTest, MLTestingUtils}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{DataFrame, Row}
 
 class VectorIndexerSuite extends MLTest with DefaultReadWriteTest with Logging {
 
@@ -281,9 +283,7 @@ class VectorIndexerSuite extends MLTest with DefaultReadWriteTest with Logging {
         points.zip(rows.map(_(0))).foreach {
           case (orig: SparseVector, indexed: SparseVector) =>
             assert(orig.indices.length == indexed.indices.length)
-          case _ =>
-            // should never happen
-            fail("Unit test has a bug in it.")
+          case _ => throw new UnknownError("Unit test has a bug in it.") // should never happen
         }
       }
     }
@@ -337,7 +337,6 @@ class VectorIndexerSuite extends MLTest with DefaultReadWriteTest with Logging {
 }
 
 private[feature] object VectorIndexerSuite {
-  case class FeatureData(features: Vector) {
-    def getFeatures: Vector = features
-  }
+  @BeanInfo
+  case class FeatureData(@BeanProperty features: Vector)
 }

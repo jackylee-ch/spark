@@ -37,15 +37,14 @@ public class OneForOneStreamManagerSuite {
     TestManagedBuffer buffer2 = Mockito.spy(new TestManagedBuffer(20));
     buffers.add(buffer1);
     buffers.add(buffer2);
+    long streamId = manager.registerStream("appId", buffers.iterator());
 
     Channel dummyChannel = Mockito.mock(Channel.class, Mockito.RETURNS_SMART_NULLS);
-    manager.registerStream("appId", buffers.iterator(), dummyChannel);
-    assert manager.numStreamStates() == 1;
+    manager.registerChannel(dummyChannel, streamId);
 
     manager.connectionTerminated(dummyChannel);
 
     Mockito.verify(buffer1, Mockito.times(1)).release();
     Mockito.verify(buffer2, Mockito.times(1)).release();
-    assert manager.numStreamStates() == 0;
   }
 }

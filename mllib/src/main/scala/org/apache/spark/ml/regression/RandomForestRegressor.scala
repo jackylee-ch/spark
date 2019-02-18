@@ -22,6 +22,7 @@ import org.json4s.JsonDSL._
 
 import org.apache.spark.annotation.Since
 import org.apache.spark.ml.{PredictionModel, Predictor}
+import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.ml.param.ParamMap
 import org.apache.spark.ml.tree._
@@ -31,8 +32,10 @@ import org.apache.spark.ml.util.DefaultParamsReader.Metadata
 import org.apache.spark.ml.util.Instrumentation.instrumented
 import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.mllib.tree.model.{RandomForestModel => OldRandomForestModel}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.functions.{col, udf}
+import org.apache.spark.sql.functions._
+
 
 /**
  * <a href="http://en.wikipedia.org/wiki/Random_forest">Random Forest</a>
@@ -53,27 +56,27 @@ class RandomForestRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: S
 
   /** @group setParam */
   @Since("1.4.0")
-  def setMaxDepth(value: Int): this.type = set(maxDepth, value)
+  override def setMaxDepth(value: Int): this.type = set(maxDepth, value)
 
   /** @group setParam */
   @Since("1.4.0")
-  def setMaxBins(value: Int): this.type = set(maxBins, value)
+  override def setMaxBins(value: Int): this.type = set(maxBins, value)
 
   /** @group setParam */
   @Since("1.4.0")
-  def setMinInstancesPerNode(value: Int): this.type = set(minInstancesPerNode, value)
+  override def setMinInstancesPerNode(value: Int): this.type = set(minInstancesPerNode, value)
 
   /** @group setParam */
   @Since("1.4.0")
-  def setMinInfoGain(value: Double): this.type = set(minInfoGain, value)
+  override def setMinInfoGain(value: Double): this.type = set(minInfoGain, value)
 
   /** @group expertSetParam */
   @Since("1.4.0")
-  def setMaxMemoryInMB(value: Int): this.type = set(maxMemoryInMB, value)
+  override def setMaxMemoryInMB(value: Int): this.type = set(maxMemoryInMB, value)
 
   /** @group expertSetParam */
   @Since("1.4.0")
-  def setCacheNodeIds(value: Boolean): this.type = set(cacheNodeIds, value)
+  override def setCacheNodeIds(value: Boolean): this.type = set(cacheNodeIds, value)
 
   /**
    * Specifies how often to checkpoint the cached node IDs.
@@ -85,53 +88,52 @@ class RandomForestRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: S
    * @group setParam
    */
   @Since("1.4.0")
-  def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
+  override def setCheckpointInterval(value: Int): this.type = set(checkpointInterval, value)
 
   /** @group setParam */
   @Since("1.4.0")
-  def setImpurity(value: String): this.type = set(impurity, value)
+  override def setImpurity(value: String): this.type = set(impurity, value)
 
   // Parameters from TreeEnsembleParams:
 
   /** @group setParam */
   @Since("1.4.0")
-  def setSubsamplingRate(value: Double): this.type = set(subsamplingRate, value)
+  override def setSubsamplingRate(value: Double): this.type = set(subsamplingRate, value)
 
   /** @group setParam */
   @Since("1.4.0")
-  def setSeed(value: Long): this.type = set(seed, value)
+  override def setSeed(value: Long): this.type = set(seed, value)
 
   // Parameters from RandomForestParams:
 
   /** @group setParam */
   @Since("1.4.0")
-  def setNumTrees(value: Int): this.type = set(numTrees, value)
+  override def setNumTrees(value: Int): this.type = set(numTrees, value)
 
   /** @group setParam */
   @Since("1.4.0")
-  def setFeatureSubsetStrategy(value: String): this.type =
+  override def setFeatureSubsetStrategy(value: String): this.type =
     set(featureSubsetStrategy, value)
 
   override protected def train(
       dataset: Dataset[_]): RandomForestRegressionModel = instrumented { instr =>
     val categoricalFeatures: Map[Int, Int] =
       MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
-
-    val instances = extractLabeledPoints(dataset).map(_.toInstance)
+    val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset)
     val strategy =
       super.getOldStrategy(categoricalFeatures, numClasses = 0, OldAlgo.Regression, getOldImpurity)
 
     instr.logPipelineStage(this)
-    instr.logDataset(instances)
+    instr.logDataset(dataset)
     instr.logParams(this, labelCol, featuresCol, predictionCol, impurity, numTrees,
       featureSubsetStrategy, maxDepth, maxBins, maxMemoryInMB, minInfoGain,
       minInstancesPerNode, seed, subsamplingRate, cacheNodeIds, checkpointInterval)
 
     val trees = RandomForest
-      .run(instances, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed, Some(instr))
+      .run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed, Some(instr))
       .map(_.asInstanceOf[DecisionTreeRegressionModel])
 
-    val numFeatures = trees.head.numFeatures
+    val numFeatures = oldDataset.first().features.size
     instr.logNamedValue(Instrumentation.loggerTags.numFeatures, numFeatures)
     new RandomForestRegressionModel(uid, trees, numFeatures)
   }
@@ -144,7 +146,7 @@ class RandomForestRegressor @Since("1.4.0") (@Since("1.4.0") override val uid: S
 object RandomForestRegressor extends DefaultParamsReadable[RandomForestRegressor]{
   /** Accessor for supported impurity settings: variance */
   @Since("1.4.0")
-  final val supportedImpurities: Array[String] = HasVarianceImpurity.supportedImpurities
+  final val supportedImpurities: Array[String] = TreeRegressorParams.supportedImpurities
 
   /** Accessor for supported featureSubsetStrategy settings: auto, all, onethird, sqrt, log2 */
   @Since("1.4.0")
@@ -269,13 +271,13 @@ object RandomForestRegressionModel extends MLReadable[RandomForestRegressionMode
     override def load(path: String): RandomForestRegressionModel = {
       implicit val format = DefaultFormats
       val (metadata: Metadata, treesData: Array[(Metadata, Node)], treeWeights: Array[Double]) =
-        EnsembleModelReadWrite.loadImpl(path, sparkSession, className, treeClassName)
+        EnsembleModelReadWrite.loadImpl(path, sparkSession, className, treeClassName, false)
       val numFeatures = (metadata.metadata \ "numFeatures").extract[Int]
       val numTrees = (metadata.metadata \ "numTrees").extract[Int]
 
       val trees: Array[DecisionTreeRegressionModel] = treesData.map { case (treeMetadata, root) =>
-        val tree =
-          new DecisionTreeRegressionModel(treeMetadata.uid, root, numFeatures)
+        val tree = new DecisionTreeRegressionModel(treeMetadata.uid,
+          root.asInstanceOf[RegressionNode], numFeatures)
         treeMetadata.getAndSetParams(tree)
         tree
       }

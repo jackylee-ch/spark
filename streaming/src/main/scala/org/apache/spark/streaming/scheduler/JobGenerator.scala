@@ -17,8 +17,6 @@
 
 package org.apache.spark.streaming.scheduler
 
-import java.util.concurrent.TimeUnit
-
 import scala.util.{Failure, Success, Try}
 
 import org.apache.spark.internal.Logging
@@ -51,11 +49,11 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     val clockClass = ssc.sc.conf.get(
       "spark.streaming.clock", "org.apache.spark.util.SystemClock")
     try {
-      Utils.classForName(clockClass).getConstructor().newInstance().asInstanceOf[Clock]
+      Utils.classForName(clockClass).newInstance().asInstanceOf[Clock]
     } catch {
       case e: ClassNotFoundException if clockClass.startsWith("org.apache.spark.streaming") =>
         val newClockClass = clockClass.replace("org.apache.spark.streaming", "org.apache.spark")
-        Utils.classForName(newClockClass).getConstructor().newInstance().asInstanceOf[Clock]
+        Utils.classForName(newClockClass).newInstance().asInstanceOf[Clock]
     }
   }
 
@@ -113,15 +111,14 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
 
     if (processReceivedData) {
       logInfo("Stopping JobGenerator gracefully")
-      val timeWhenStopStarted = System.nanoTime()
+      val timeWhenStopStarted = System.currentTimeMillis()
       val stopTimeoutMs = conf.getTimeAsMs(
         "spark.streaming.gracefulStopTimeout", s"${10 * ssc.graph.batchDuration.milliseconds}ms")
       val pollTime = 100
 
       // To prevent graceful stop to get stuck permanently
       def hasTimedOut: Boolean = {
-        val diff = TimeUnit.NANOSECONDS.toMillis((System.nanoTime() - timeWhenStopStarted))
-        val timedOut = diff > stopTimeoutMs
+        val timedOut = (System.currentTimeMillis() - timeWhenStopStarted) > stopTimeoutMs
         if (timedOut) {
           logWarning("Timed out while stopping the job generator (timeout = " + stopTimeoutMs + ")")
         }

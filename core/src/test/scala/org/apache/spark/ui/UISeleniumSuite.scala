@@ -39,11 +39,10 @@ import org.apache.spark._
 import org.apache.spark.LocalSparkContext._
 import org.apache.spark.api.java.StorageLevels
 import org.apache.spark.deploy.history.HistoryServerSuite
-import org.apache.spark.internal.config._
-import org.apache.spark.internal.config.Status._
-import org.apache.spark.internal.config.UI._
+import org.apache.spark.internal.config.MEMORY_OFFHEAP_SIZE
 import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.status.api.v1.{JacksonMessageWriter, RDDDataDistribution, StageStatus}
+import org.apache.spark.status.config._
 
 private[spark] class SparkUICssErrorHandler extends DefaultCssErrorHandler {
 
@@ -104,9 +103,9 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
     val conf = new SparkConf()
       .setMaster("local")
       .setAppName("test")
-      .set(UI_ENABLED, true)
-      .set(UI_PORT, 0)
-      .set(UI_KILL_ENABLED, killEnabled)
+      .set("spark.ui.enabled", "true")
+      .set("spark.ui.port", "0")
+      .set("spark.ui.killEnabled", killEnabled.toString)
       .set(MEMORY_OFFHEAP_SIZE.key, "64m")
     val sc = new SparkContext(conf)
     assert(sc.ui.isDefined)
@@ -137,7 +136,7 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
       val rddJson = getJson(ui, "storage/rdd/0")
       (rddJson  \ "storageLevel").extract[String] should be (StorageLevels.DISK_ONLY.description)
 
-      rdd.unpersist(blocking = true)
+      rdd.unpersist()
       rdd.persist(StorageLevels.MEMORY_ONLY).count()
       eventually(timeout(5 seconds), interval(50 milliseconds)) {
         goToUi(ui, "/storage")
@@ -172,7 +171,7 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
       dist0.onHeapMemoryUsed should not be (Some(0L))
       dist0.offHeapMemoryUsed should be (Some(0L))
 
-      rdd.unpersist(blocking = true)
+      rdd.unpersist()
       rdd.persist(StorageLevels.OFF_HEAP).count()
       val updatedStorageJson1 = getJson(ui, "storage/rdd")
       updatedStorageJson1.children.length should be (1)
@@ -532,8 +531,8 @@ class UISeleniumSuite extends SparkFunSuite with WebBrowser with Matchers with B
     val conf = new SparkConf()
       .setMaster("local")
       .setAppName("test")
-      .set(UI_ENABLED, true)
-      .set(UI_PORT, 0)
+      .set("spark.ui.enabled", "true")
+      .set("spark.ui.port", "0")
       .set(MAX_RETAINED_STAGES, 3)
       .set(MAX_RETAINED_JOBS, 2)
       .set(ASYNC_TRACKING_ENABLED, false)

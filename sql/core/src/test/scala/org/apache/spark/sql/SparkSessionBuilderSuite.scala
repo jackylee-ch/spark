@@ -20,7 +20,6 @@ package org.apache.spark.sql
 import org.scalatest.BeforeAndAfterEach
 
 import org.apache.spark.{SparkConf, SparkContext, SparkFunSuite}
-import org.apache.spark.internal.config.UI.UI_ENABLED
 import org.apache.spark.sql.internal.SQLConf
 
 /**
@@ -39,7 +38,7 @@ class SparkSessionBuilderSuite extends SparkFunSuite with BeforeAndAfterEach {
   test("create with config options and propagate them to SparkContext and SparkSession") {
     val session = SparkSession.builder()
       .master("local")
-      .config(UI_ENABLED.key, value = false)
+      .config("spark.ui.enabled", value = false)
       .config("some-config", "v2")
       .getOrCreate()
     assert(session.sparkContext.conf.get("some-config") == "v2")

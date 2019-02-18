@@ -17,7 +17,6 @@
 
 package org.apache.spark.sql.catalyst.plans
 
-import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.trees.{CurrentOrigin, TreeNode}
 import org.apache.spark.sql.internal.SQLConf
@@ -173,9 +172,9 @@ abstract class QueryPlan[PlanType <: QueryPlan[PlanType]] extends TreeNode[PlanT
    */
   protected def statePrefix = if (missingInput.nonEmpty && children.nonEmpty) "!" else ""
 
-  override def simpleString(maxFields: Int): String = statePrefix + super.simpleString(maxFields)
+  override def simpleString: String = statePrefix + super.simpleString
 
-  override def verboseString(maxFields: Int): String = simpleString(maxFields)
+  override def verboseString: String = simpleString
 
   /**
    * All the subqueries of current plan.
@@ -300,22 +299,6 @@ object QueryPlan extends PredicateHelper {
       splitConjunctivePredicates(normalized)
     } else {
       Nil
-    }
-  }
-
-  /**
-   * Converts the query plan to string and appends it via provided function.
-   */
-  def append[T <: QueryPlan[T]](
-      plan: => QueryPlan[T],
-      append: String => Unit,
-      verbose: Boolean,
-      addSuffix: Boolean,
-      maxFields: Int = SQLConf.get.maxToStringFields): Unit = {
-    try {
-      plan.treeString(append, verbose, addSuffix, maxFields)
-    } catch {
-      case e: AnalysisException => append(e.toString)
     }
   }
 }

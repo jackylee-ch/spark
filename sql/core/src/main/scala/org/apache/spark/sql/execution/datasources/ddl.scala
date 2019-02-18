@@ -68,7 +68,7 @@ case class CreateTempViewUsing(
       s"Temporary view '$tableIdent' should not have specified a database")
   }
 
-  override def argString(maxFields: Int): String = {
+  override def argString: String = {
     s"[tableIdent:$tableIdent " +
       userSpecifiedSchema.map(_ + " ").getOrElse("") +
       s"replace:$replace " +

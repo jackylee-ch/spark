@@ -17,6 +17,7 @@
 
 package org.apache.spark.network.util;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -68,7 +69,7 @@ public class TransportFrameDecoderSuite {
       decoder.channelRead(ctx, len);
       decoder.channelRead(ctx, dataBuf);
       verify(interceptor, times(interceptedReads)).handle(any(ByteBuf.class));
-      verify(ctx).fireChannelRead(any(ByteBuf.class));
+      verify(ctx).fireChannelRead(any(ByteBuffer.class));
       assertEquals(0, len.refCnt());
       assertEquals(0, dataBuf.refCnt());
     } finally {

@@ -347,10 +347,10 @@ public class SparkSaslSuite {
     verify(handler).getStreamManager();
 
     saslHandler.channelInactive(null);
-    verify(handler).channelInactive(isNull());
+    verify(handler).channelInactive(any(TransportClient.class));
 
     saslHandler.exceptionCaught(null, null);
-    verify(handler).exceptionCaught(isNull(), isNull());
+    verify(handler).exceptionCaught(any(Throwable.class), any(TransportClient.class));
   }
 
   @Test

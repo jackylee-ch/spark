@@ -44,7 +44,7 @@ private[spark] class WholeTextFileRDD(
     // traversing a large number of directories and files. Parallelize it.
     conf.setIfUnset(FileInputFormat.LIST_STATUS_NUM_THREADS,
       Runtime.getRuntime.availableProcessors().toString)
-    val inputFormat = inputFormatClass.getConstructor().newInstance()
+    val inputFormat = inputFormatClass.newInstance
     inputFormat match {
       case configurable: Configurable =>
         configurable.setConf(conf)

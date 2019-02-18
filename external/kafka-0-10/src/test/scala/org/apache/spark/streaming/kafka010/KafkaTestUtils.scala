@@ -21,7 +21,7 @@ import java.io.{File, IOException}
 import java.lang.{Integer => JInt}
 import java.net.InetSocketAddress
 import java.util.{Map => JMap, Properties}
-import java.util.concurrent.{TimeoutException, TimeUnit}
+import java.util.concurrent.TimeoutException
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
@@ -265,14 +265,14 @@ private[kafka010] class KafkaTestUtils extends Logging {
       }
     }
 
-    val startTimeNs = System.nanoTime()
+    val startTime = System.currentTimeMillis()
     @tailrec
     def tryAgain(attempt: Int): T = {
       makeAttempt() match {
         case Right(result) => result
         case Left(e) =>
-          val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNs)
-          if (durationMs < timeout.milliseconds) {
+          val duration = System.currentTimeMillis() - startTime
+          if (duration < timeout.milliseconds) {
             Thread.sleep(interval.milliseconds)
           } else {
             throw new TimeoutException(e.getMessage)

@@ -247,7 +247,7 @@ object DecisionTreeRunner {
     val numTest = test.count()
     println(s"numTraining = $numTraining, numTest = $numTest.")
 
-    examples.unpersist()
+    examples.unpersist(blocking = false)
 
     (training, test, numClasses)
   }

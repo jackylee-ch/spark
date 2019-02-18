@@ -31,28 +31,36 @@ import org.json4s.jackson.Serialization
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.RpcEndpointRef
+import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.streaming.{Offset => _, _}
 import org.apache.spark.sql.execution.streaming.sources.TextSocketReader
 import org.apache.spark.sql.sources.v2.DataSourceOptions
 import org.apache.spark.sql.sources.v2.reader._
 import org.apache.spark.sql.sources.v2.reader.streaming._
+import org.apache.spark.sql.types.StructType
 import org.apache.spark.util.RpcUtils
 
 
 /**
- * A [[ContinuousStream]] that reads text lines through a TCP socket, designed only for tutorials
- * and debugging. This ContinuousStream will *not* work in production applications due to
+ * A ContinuousReadSupport that reads text lines through a TCP socket, designed only for tutorials
+ * and debugging. This ContinuousReadSupport will *not* work in production applications due to
  * multiple reasons, including no support for fault recovery.
  *
  * The driver maintains a socket connection to the host-port, keeps the received messages in
  * buckets and serves the messages to the executors via a RPC endpoint.
  */
-class TextSocketContinuousStream(
-    host: String, port: Int, numPartitions: Int, options: DataSourceOptions)
-  extends ContinuousStream with Logging {
+class TextSocketContinuousReadSupport(options: DataSourceOptions)
+  extends ContinuousReadSupport with Logging {
 
   implicit val defaultFormats: DefaultFormats = DefaultFormats
+
+  private val host: String = options.get("host").get()
+  private val port: Int = options.get("port").get().toInt
+
+  assert(SparkSession.getActiveSession.isDefined)
+  private val spark = SparkSession.getActiveSession.get
+  private val numPartitions = spark.sparkContext.defaultParallelism
 
   @GuardedBy("this")
   private var socket: Socket = _
@@ -93,9 +101,21 @@ class TextSocketContinuousStream(
     startOffset
   }
 
+  override def newScanConfigBuilder(start: Offset): ScanConfigBuilder = {
+    new SimpleStreamingScanConfigBuilder(fullSchema(), start)
+  }
 
-  override def planInputPartitions(start: Offset): Array[InputPartition] = {
-    val startOffset = start.asInstanceOf[TextSocketOffset]
+  override def fullSchema(): StructType = {
+    if (includeTimestamp) {
+      TextSocketReader.SCHEMA_TIMESTAMP
+    } else {
+      TextSocketReader.SCHEMA_REGULAR
+    }
+  }
+
+  override def planInputPartitions(config: ScanConfig): Array[InputPartition] = {
+    val startOffset = config.asInstanceOf[SimpleStreamingScanConfig]
+      .start.asInstanceOf[TextSocketOffset]
     recordEndpoint.setStartOffsets(startOffset.offsets)
     val endpointName = s"TextSocketContinuousReaderEndpoint-${java.util.UUID.randomUUID()}"
     endpointRef = recordEndpoint.rpcEnv.setupEndpoint(endpointName, recordEndpoint)
@@ -120,7 +140,8 @@ class TextSocketContinuousStream(
     }.toArray
   }
 
-  override def createContinuousReaderFactory(): ContinuousPartitionReaderFactory = {
+  override def createContinuousReaderFactory(
+      config: ScanConfig): ContinuousPartitionReaderFactory = {
     TextSocketReaderFactory
   }
 
@@ -176,7 +197,7 @@ class TextSocketContinuousStream(
               logWarning(s"Stream closed by $host:$port")
               return
             }
-            TextSocketContinuousStream.this.synchronized {
+            TextSocketContinuousReadSupport.this.synchronized {
               currentOffset += 1
               val newData = (line,
                 Timestamp.valueOf(

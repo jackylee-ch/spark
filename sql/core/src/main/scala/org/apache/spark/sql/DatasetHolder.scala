@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql
 
-import org.apache.spark.annotation.Stable
+import org.apache.spark.annotation.InterfaceStability
 
 /**
  * A container for a [[Dataset]], used for implicit conversions in Scala.
@@ -30,7 +30,7 @@ import org.apache.spark.annotation.Stable
  *
  * @since 1.6.0
  */
-@Stable
+@InterfaceStability.Stable
 case class DatasetHolder[T] private[sql](private val ds: Dataset[T]) {
 
   // This is declared with parentheses to prevent the Scala compiler from treating

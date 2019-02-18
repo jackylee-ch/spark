@@ -22,7 +22,7 @@ import scala.collection.mutable
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 
-import org.apache.spark.annotation.Stable
+import org.apache.spark.annotation.InterfaceStability
 
 
 /**
@@ -37,7 +37,7 @@ import org.apache.spark.annotation.Stable
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 sealed class Metadata private[types] (private[types] val map: Map[String, Any])
   extends Serializable {
 
@@ -117,7 +117,7 @@ sealed class Metadata private[types] (private[types] val map: Map[String, Any])
 /**
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 object Metadata {
 
   private[this] val _empty = new Metadata(Map.empty)
@@ -190,8 +190,6 @@ object Metadata {
         JBool(x)
       case x: String =>
         JString(x)
-      case null =>
-        JNull
       case x: Metadata =>
         toJsonValue(x.map)
       case other =>
@@ -230,7 +228,7 @@ object Metadata {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 class MetadataBuilder {
 
   private val map: mutable.Map[String, Any] = mutable.Map.empty

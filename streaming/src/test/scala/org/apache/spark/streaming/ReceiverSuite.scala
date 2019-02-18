@@ -19,7 +19,7 @@ package org.apache.spark.streaming
 
 import java.io.File
 import java.nio.ByteBuffer
-import java.util.concurrent.{Semaphore, TimeUnit}
+import java.util.concurrent.Semaphore
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -29,7 +29,6 @@ import org.scalatest.concurrent.Eventually._
 import org.scalatest.time.SpanSugar._
 
 import org.apache.spark.SparkConf
-import org.apache.spark.internal.config.UI._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.storage.StreamBlockId
 import org.apache.spark.streaming.receiver._
@@ -147,10 +146,10 @@ class ReceiverSuite extends TestSuiteBase with TimeLimits with Serializable {
     val generatedData = new ArrayBuffer[Int]
 
     // Generate blocks
-    val startTimeNs = System.nanoTime()
+    val startTime = System.currentTimeMillis()
     blockGenerator.start()
     var count = 0
-    while(System.nanoTime() - startTimeNs < TimeUnit.MILLISECONDS.toNanos(waitTime)) {
+    while(System.currentTimeMillis - startTime < waitTime) {
       blockGenerator.addData(count)
       generatedData += count
       count += 1
@@ -201,7 +200,7 @@ class ReceiverSuite extends TestSuiteBase with TimeLimits with Serializable {
     val sparkConf = new SparkConf()
       .setMaster("local[4]")  // must be at least 3 as we are going to start 2 receivers
       .setAppName(framework)
-      .set(UI_ENABLED, true)
+      .set("spark.ui.enabled", "true")
       .set("spark.streaming.receiver.writeAheadLog.enable", "true")
       .set("spark.streaming.receiver.writeAheadLog.rollingIntervalSecs", "1")
     val batchDuration = Milliseconds(500)

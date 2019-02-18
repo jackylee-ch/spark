@@ -27,11 +27,12 @@ import org.apache.spark.ui.{UIUtils, WebUIPage}
 private[history] class HistoryPage(parent: HistoryServer) extends WebUIPage("") {
 
   def render(request: HttpServletRequest): Seq[Node] = {
-    val requestedIncomplete = Option(request.getParameter("showIncomplete"))
-      .getOrElse("false").toBoolean
+    // stripXSS is called first to remove suspicious characters used in XSS attacks
+    val requestedIncomplete =
+      Option(UIUtils.stripXSS(request.getParameter("showIncomplete"))).getOrElse("false").toBoolean
 
-    val displayApplications = parent.getApplicationList()
-      .exists(isApplicationCompleted(_) != requestedIncomplete)
+    val allAppsSize = parent.getApplicationList()
+      .count(isApplicationCompleted(_) != requestedIncomplete)
     val eventLogsUnderProcessCount = parent.getEventLogsUnderProcess()
     val lastUpdatedTime = parent.getLastUpdatedTime()
     val providerConfig = parent.getProviderConfig()
@@ -62,9 +63,9 @@ private[history] class HistoryPage(parent: HistoryServer) extends WebUIPage("") 
             }
 
             {
-            if (displayApplications) {
+            if (allAppsSize > 0) {
               <script src={UIUtils.prependBaseUri(
-                request, "/static/dataTables.rowsGroup.js")}></script> ++
+                  request, "/static/dataTables.rowsGroup.js")}></script> ++
                 <div id="history-summary" class="row-fluid"></div> ++
                 <script src={UIUtils.prependBaseUri(request, "/static/historypage.js")}></script> ++
                 <script>setAppLimit({parent.maxApplications})</script>

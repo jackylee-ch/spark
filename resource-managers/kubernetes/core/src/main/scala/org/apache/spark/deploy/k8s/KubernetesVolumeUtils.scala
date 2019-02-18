@@ -16,6 +16,10 @@
  */
 package org.apache.spark.deploy.k8s
 
+import java.util.NoSuchElementException
+
+import scala.util.{Failure, Success, Try}
+
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.k8s.Config._
 
@@ -27,21 +31,25 @@ private[spark] object KubernetesVolumeUtils {
    * @param prefix the given property name prefix
    * @return a Map storing with volume name as key and spec as value
    */
-  def parseVolumesWithPrefix(sparkConf: SparkConf, prefix: String): Seq[KubernetesVolumeSpec] = {
+  def parseVolumesWithPrefix(
+    sparkConf: SparkConf,
+    prefix: String): Iterable[Try[KubernetesVolumeSpec[_ <: KubernetesVolumeSpecificConf]]] = {
     val properties = sparkConf.getAllWithPrefix(prefix).toMap
 
     getVolumeTypesAndNames(properties).map { case (volumeType, volumeName) =>
       val pathKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_MOUNT_PATH_KEY"
       val readOnlyKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_MOUNT_READONLY_KEY"
-      val subPathKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_MOUNT_SUBPATH_KEY"
 
-      KubernetesVolumeSpec(
+      for {
+        path <- properties.getTry(pathKey)
+        volumeConf <- parseVolumeSpecificConf(properties, volumeType, volumeName)
+      } yield KubernetesVolumeSpec(
         volumeName = volumeName,
-        mountPath = properties(pathKey),
-        mountSubPath = properties.get(subPathKey).getOrElse(""),
+        mountPath = path,
         mountReadOnly = properties.get(readOnlyKey).exists(_.toBoolean),
-        volumeConf = parseVolumeSpecificConf(properties, volumeType, volumeName))
-    }.toSeq
+        volumeConf = volumeConf
+      )
+    }
   }
 
   /**
@@ -51,7 +59,9 @@ private[spark] object KubernetesVolumeUtils {
    * @param properties flat mapping of property names to values
    * @return Set[(volumeType, volumeName)]
    */
-  private def getVolumeTypesAndNames(properties: Map[String, String]): Set[(String, String)] = {
+  private def getVolumeTypesAndNames(
+    properties: Map[String, String]
+  ): Set[(String, String)] = {
     properties.keys.flatMap { k =>
       k.split('.').toList match {
         case tpe :: name :: _ => Some((tpe, name))
@@ -61,25 +71,40 @@ private[spark] object KubernetesVolumeUtils {
   }
 
   private def parseVolumeSpecificConf(
-      options: Map[String, String],
-      volumeType: String,
-      volumeName: String): KubernetesVolumeSpecificConf = {
+    options: Map[String, String],
+    volumeType: String,
+    volumeName: String): Try[KubernetesVolumeSpecificConf] = {
     volumeType match {
       case KUBERNETES_VOLUMES_HOSTPATH_TYPE =>
         val pathKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_OPTIONS_PATH_KEY"
-        KubernetesHostPathVolumeConf(options(pathKey))
+        for {
+          path <- options.getTry(pathKey)
+        } yield KubernetesHostPathVolumeConf(path)
 
       case KUBERNETES_VOLUMES_PVC_TYPE =>
         val claimNameKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_OPTIONS_CLAIM_NAME_KEY"
-        KubernetesPVCVolumeConf(options(claimNameKey))
+        for {
+          claimName <- options.getTry(claimNameKey)
+        } yield KubernetesPVCVolumeConf(claimName)
 
       case KUBERNETES_VOLUMES_EMPTYDIR_TYPE =>
         val mediumKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_OPTIONS_MEDIUM_KEY"
         val sizeLimitKey = s"$volumeType.$volumeName.$KUBERNETES_VOLUMES_OPTIONS_SIZE_LIMIT_KEY"
-        KubernetesEmptyDirVolumeConf(options.get(mediumKey), options.get(sizeLimitKey))
+        Success(KubernetesEmptyDirVolumeConf(options.get(mediumKey), options.get(sizeLimitKey)))
 
       case _ =>
-        throw new IllegalArgumentException(s"Kubernetes Volume type `$volumeType` is not supported")
+        Failure(new RuntimeException(s"Kubernetes Volume type `$volumeType` is not supported"))
+    }
+  }
+
+  /**
+   * Convenience wrapper to accumulate key lookup errors
+   */
+  implicit private class MapOps[A, B](m: Map[A, B]) {
+    def getTry(key: A): Try[B] = {
+      m
+        .get(key)
+        .fold[Try[B]](Failure(new NoSuchElementException(key.toString)))(Success(_))
     }
   }
 }

@@ -37,9 +37,6 @@ import org.apache.spark.deploy.ExternalShuffleService
 import org.apache.spark.deploy.master.{DriverState, Master}
 import org.apache.spark.deploy.worker.ui.WorkerWebUI
 import org.apache.spark.internal.{config, Logging}
-import org.apache.spark.internal.config.Tests.IS_TESTING
-import org.apache.spark.internal.config.UI._
-import org.apache.spark.internal.config.Worker._
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rpc._
 import org.apache.spark.util.{SparkUncaughtExceptionHandler, ThreadUtils, Utils}
@@ -75,7 +72,7 @@ private[deploy] class Worker(
   // For worker and executor IDs
   private def createDateFormat = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US)
   // Send a heartbeat every (heartbeat timeout) / 4 milliseconds
-  private val HEARTBEAT_MILLIS = conf.get(WORKER_TIMEOUT) * 1000 / 4
+  private val HEARTBEAT_MILLIS = conf.getLong("spark.worker.timeout", 60) * 1000 / 4
 
   // Model retries to connect to the master, after Hadoop's model.
   // The first six attempts to reconnect are in shorter intervals (between 5 and 15 seconds)
@@ -94,23 +91,27 @@ private[deploy] class Worker(
   private val PROLONGED_REGISTRATION_RETRY_INTERVAL_SECONDS = (math.round(60
     * REGISTRATION_RETRY_FUZZ_MULTIPLIER))
 
-  private val CLEANUP_ENABLED = conf.get(WORKER_CLEANUP_ENABLED)
+  private val CLEANUP_ENABLED = conf.getBoolean("spark.worker.cleanup.enabled", false)
   // How often worker will clean up old app folders
-  private val CLEANUP_INTERVAL_MILLIS = conf.get(WORKER_CLEANUP_INTERVAL) * 1000
+  private val CLEANUP_INTERVAL_MILLIS =
+    conf.getLong("spark.worker.cleanup.interval", 60 * 30) * 1000
   // TTL for app folders/data;  after TTL expires it will be cleaned up
-  private val APP_DATA_RETENTION_SECONDS = conf.get(APP_DATA_RETENTION)
+  private val APP_DATA_RETENTION_SECONDS =
+    conf.getLong("spark.worker.cleanup.appDataTtl", 7 * 24 * 3600)
 
   // Whether or not cleanup the non-shuffle files on executor exits.
   private val CLEANUP_NON_SHUFFLE_FILES_ENABLED =
-    conf.get(config.STORAGE_CLEANUP_FILES_AFTER_EXECUTOR_EXIT)
+    conf.getBoolean("spark.storage.cleanupFilesAfterExecutorExit", true)
 
+  private val testing: Boolean = sys.props.contains("spark.testing")
   private var master: Option[RpcEndpointRef] = None
 
   /**
    * Whether to use the master address in `masterRpcAddresses` if possible. If it's disabled, Worker
    * will just use the address received from Master.
    */
-  private val preferConfiguredMasterAddress = conf.get(PREFER_CONFIGURED_MASTER_ADDRESS)
+  private val preferConfiguredMasterAddress =
+    conf.getBoolean("spark.worker.preferConfiguredMasterAddress", false)
   /**
    * The master address to connect in case of failure. When the connection is broken, worker will
    * use this address to connect. This is usually just one of `masterRpcAddresses`. However, when
@@ -126,7 +127,7 @@ private[deploy] class Worker(
   private var connected = false
   private val workerId = generateWorkerId()
   private val sparkHome =
-    if (sys.props.contains(IS_TESTING.key)) {
+    if (testing) {
       assert(sys.props.contains("spark.test.home"), "spark.test.home is not set!")
       new File(sys.props("spark.test.home"))
     } else {
@@ -141,8 +142,10 @@ private[deploy] class Worker(
   val appDirectories = new HashMap[String, Seq[String]]
   val finishedApps = new HashSet[String]
 
-  val retainedExecutors = conf.get(WORKER_UI_RETAINED_EXECUTORS)
-  val retainedDrivers = conf.get(WORKER_UI_RETAINED_DRIVERS)
+  val retainedExecutors = conf.getInt("spark.worker.ui.retainedExecutors",
+    WorkerWebUI.DEFAULT_RETAINED_EXECUTORS)
+  val retainedDrivers = conf.getInt("spark.worker.ui.retainedDrivers",
+    WorkerWebUI.DEFAULT_RETAINED_DRIVERS)
 
   // The shuffle service is not actually started unless configured.
   private val shuffleService = if (externalShuffleServiceSupplier != null) {
@@ -162,7 +165,7 @@ private[deploy] class Worker(
   private val metricsSystem = MetricsSystem.createMetricsSystem("worker", conf, securityMgr)
   private val workerSource = new WorkerSource(this)
 
-  val reverseProxy = conf.get(UI_REVERSE_PROXY)
+  val reverseProxy = conf.getBoolean("spark.ui.reverseProxy", false)
 
   private var registerMasterFutures: Array[JFuture[_]] = null
   private var registrationRetryTimer: Option[JScheduledFuture[_]] = None

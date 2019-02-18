@@ -51,7 +51,7 @@ class HadoopFileLinesReader(
       new Path(new URI(file.filePath)),
       file.start,
       file.length,
-      // The locality is decided by `getPreferredLocations` in `FileScanRDD`.
+      // TODO: Implement Locality
       Array.empty)
     val attemptId = new TaskAttemptID(new TaskID(new JobID(), TaskType.MAP, 0), 0)
     val hadoopAttemptContext = new TaskAttemptContextImpl(conf, attemptId)

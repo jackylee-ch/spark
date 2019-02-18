@@ -217,7 +217,7 @@ class BisectingKMeans private (
           newClusterCenters = newClusters.mapValues(_.center).map(identity)
         }
         if (preIndices != null) {
-          preIndices.unpersist()
+          preIndices.unpersist(false)
         }
         preIndices = indices
         indices = updateAssignments(assignments, divisibleIndices, newClusterCenters, dMeasure).keys
@@ -234,16 +234,15 @@ class BisectingKMeans private (
       level += 1
     }
     if (preIndices != null) {
-      preIndices.unpersist()
+      preIndices.unpersist(false)
     }
     if (indices != null) {
-      indices.unpersist()
+      indices.unpersist(false)
     }
-    norms.unpersist()
+    norms.unpersist(false)
     val clusters = activeClusters ++ inactiveClusters
     val root = buildTree(clusters, dMeasure)
-    val totalCost = root.leafNodes.map(_.cost).sum
-    new BisectingKMeansModel(root, this.distanceMeasure, totalCost)
+    new BisectingKMeansModel(root, this.distanceMeasure)
   }
 
   /**

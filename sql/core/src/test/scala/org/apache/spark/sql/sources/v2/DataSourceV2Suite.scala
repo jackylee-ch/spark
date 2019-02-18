@@ -24,7 +24,7 @@ import test.org.apache.spark.sql.sources.v2._
 import org.apache.spark.SparkException
 import org.apache.spark.sql.{DataFrame, QueryTest, Row}
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.execution.datasources.v2.{BatchScanExec, DataSourceV2Relation}
+import org.apache.spark.sql.execution.datasources.v2.{DataSourceV2Relation, DataSourceV2ScanExec}
 import org.apache.spark.sql.execution.exchange.{Exchange, ShuffleExchangeExec}
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector
 import org.apache.spark.sql.functions._
@@ -38,17 +38,18 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
 class DataSourceV2Suite extends QueryTest with SharedSQLContext {
   import testImplicits._
 
-  private def getBatch(query: DataFrame): AdvancedBatch = {
+  private def getScanConfig(query: DataFrame): AdvancedScanConfigBuilder = {
     query.queryExecution.executedPlan.collect {
-      case d: BatchScanExec =>
-        d.batch.asInstanceOf[AdvancedBatch]
+      case d: DataSourceV2ScanExec =>
+        d.scanConfig.asInstanceOf[AdvancedScanConfigBuilder]
     }.head
   }
 
-  private def getJavaBatch(query: DataFrame): JavaAdvancedDataSourceV2.AdvancedBatch = {
+  private def getJavaScanConfig(
+      query: DataFrame): JavaAdvancedDataSourceV2.AdvancedScanConfigBuilder = {
     query.queryExecution.executedPlan.collect {
-      case d: BatchScanExec =>
-        d.batch.asInstanceOf[JavaAdvancedDataSourceV2.AdvancedBatch]
+      case d: DataSourceV2ScanExec =>
+        d.scanConfig.asInstanceOf[JavaAdvancedDataSourceV2.AdvancedScanConfigBuilder]
     }.head
   }
 
@@ -72,51 +73,51 @@ class DataSourceV2Suite extends QueryTest with SharedSQLContext {
         val q1 = df.select('j)
         checkAnswer(q1, (0 until 10).map(i => Row(-i)))
         if (cls == classOf[AdvancedDataSourceV2]) {
-          val batch = getBatch(q1)
-          assert(batch.filters.isEmpty)
-          assert(batch.requiredSchema.fieldNames === Seq("j"))
+          val config = getScanConfig(q1)
+          assert(config.filters.isEmpty)
+          assert(config.requiredSchema.fieldNames === Seq("j"))
         } else {
-          val batch = getJavaBatch(q1)
-          assert(batch.filters.isEmpty)
-          assert(batch.requiredSchema.fieldNames === Seq("j"))
+          val config = getJavaScanConfig(q1)
+          assert(config.filters.isEmpty)
+          assert(config.requiredSchema.fieldNames === Seq("j"))
         }
 
         val q2 = df.filter('i > 3)
         checkAnswer(q2, (4 until 10).map(i => Row(i, -i)))
         if (cls == classOf[AdvancedDataSourceV2]) {
-          val batch = getBatch(q2)
-          assert(batch.filters.flatMap(_.references).toSet == Set("i"))
-          assert(batch.requiredSchema.fieldNames === Seq("i", "j"))
+          val config = getScanConfig(q2)
+          assert(config.filters.flatMap(_.references).toSet == Set("i"))
+          assert(config.requiredSchema.fieldNames === Seq("i", "j"))
         } else {
-          val batch = getJavaBatch(q2)
-          assert(batch.filters.flatMap(_.references).toSet == Set("i"))
-          assert(batch.requiredSchema.fieldNames === Seq("i", "j"))
+          val config = getJavaScanConfig(q2)
+          assert(config.filters.flatMap(_.references).toSet == Set("i"))
+          assert(config.requiredSchema.fieldNames === Seq("i", "j"))
         }
 
         val q3 = df.select('i).filter('i > 6)
         checkAnswer(q3, (7 until 10).map(i => Row(i)))
         if (cls == classOf[AdvancedDataSourceV2]) {
-          val batch = getBatch(q3)
-          assert(batch.filters.flatMap(_.references).toSet == Set("i"))
-          assert(batch.requiredSchema.fieldNames === Seq("i"))
+          val config = getScanConfig(q3)
+          assert(config.filters.flatMap(_.references).toSet == Set("i"))
+          assert(config.requiredSchema.fieldNames === Seq("i"))
         } else {
-          val batch = getJavaBatch(q3)
-          assert(batch.filters.flatMap(_.references).toSet == Set("i"))
-          assert(batch.requiredSchema.fieldNames === Seq("i"))
+          val config = getJavaScanConfig(q3)
+          assert(config.filters.flatMap(_.references).toSet == Set("i"))
+          assert(config.requiredSchema.fieldNames === Seq("i"))
         }
 
         val q4 = df.select('j).filter('j < -10)
         checkAnswer(q4, Nil)
         if (cls == classOf[AdvancedDataSourceV2]) {
-          val batch = getBatch(q4)
+          val config = getScanConfig(q4)
           // 'j < 10 is not supported by the testing data source.
-          assert(batch.filters.isEmpty)
-          assert(batch.requiredSchema.fieldNames === Seq("j"))
+          assert(config.filters.isEmpty)
+          assert(config.requiredSchema.fieldNames === Seq("j"))
         } else {
-          val batch = getJavaBatch(q4)
+          val config = getJavaScanConfig(q4)
           // 'j < 10 is not supported by the testing data source.
-          assert(batch.filters.isEmpty)
-          assert(batch.requiredSchema.fieldNames === Seq("j"))
+          assert(config.filters.isEmpty)
+          assert(config.requiredSchema.fieldNames === Seq("j"))
         }
       }
     }
@@ -278,26 +279,26 @@ class DataSourceV2Suite extends QueryTest with SharedSQLContext {
 
     val q1 = df.select('i + 1)
     checkAnswer(q1, (1 until 11).map(i => Row(i)))
-    val batch1 = getBatch(q1)
-    assert(batch1.requiredSchema.fieldNames === Seq("i"))
+    val config1 = getScanConfig(q1)
+    assert(config1.requiredSchema.fieldNames === Seq("i"))
 
     val q2 = df.select(lit(1))
     checkAnswer(q2, (0 until 10).map(i => Row(1)))
-    val batch2 = getBatch(q2)
-    assert(batch2.requiredSchema.isEmpty)
+    val config2 = getScanConfig(q2)
+    assert(config2.requiredSchema.isEmpty)
 
     // 'j === 1 can't be pushed down, but we should still be able do column pruning
     val q3 = df.filter('j === -1).select('j * 2)
     checkAnswer(q3, Row(-2))
-    val batch3 = getBatch(q3)
-    assert(batch3.filters.isEmpty)
-    assert(batch3.requiredSchema.fieldNames === Seq("j"))
+    val config3 = getScanConfig(q3)
+    assert(config3.filters.isEmpty)
+    assert(config3.requiredSchema.fieldNames === Seq("j"))
 
     // column pruning should work with other operators.
     val q4 = df.sort('i).limit(1).select('i + 1)
     checkAnswer(q4, Row(1))
-    val batch4 = getBatch(q4)
-    assert(batch4.requiredSchema.fieldNames === Seq("i"))
+    val config4 = getScanConfig(q4)
+    assert(config4.requiredSchema.fieldNames === Seq("i"))
   }
 
   test("SPARK-23315: get output from canonicalized data source v2 related plans") {
@@ -309,7 +310,7 @@ class DataSourceV2Suite extends QueryTest with SharedSQLContext {
       assert(logical.canonicalized.output.length == logicalNumOutput)
 
       val physical = df.queryExecution.executedPlan.collect {
-        case d: BatchScanExec => d
+        case d: DataSourceV2ScanExec => d
       }.head
       assert(physical.canonicalized.output.length == physicalNumOutput)
     }
@@ -329,8 +330,8 @@ class DataSourceV2Suite extends QueryTest with SharedSQLContext {
         .format(classOf[DataSourceV2WithSessionConfig].getName).load()
       val options = df.queryExecution.optimizedPlan.collectFirst {
         case d: DataSourceV2Relation => d.options
-      }.get
-      assert(options.get(optionName).get == "false")
+      }
+      assert(options.get.get(optionName) == Some("false"))
     }
   }
 
@@ -350,28 +351,14 @@ class DataSourceV2Suite extends QueryTest with SharedSQLContext {
       }
     }
   }
-
-  test("SPARK-25700: do not read schema when writing in other modes except append and overwrite") {
-    withTempPath { file =>
-      val cls = classOf[SimpleWriteOnlyDataSource]
-      val path = file.getCanonicalPath
-      val df = spark.range(5).select('id as 'i, -'id as 'j)
-      // non-append mode should not throw exception, as they don't access schema.
-      df.write.format(cls.getName).option("path", path).mode("error").save()
-      df.write.format(cls.getName).option("path", path).mode("ignore").save()
-      // append and overwrite modes will access the schema and should throw exception.
-      intercept[SchemaReadAttemptException] {
-        df.write.format(cls.getName).option("path", path).mode("append").save()
-      }
-      intercept[SchemaReadAttemptException] {
-        df.write.format(cls.getName).option("path", path).mode("overwrite").save()
-      }
-    }
-  }
 }
 
 
 case class RangeInputPartition(start: Int, end: Int) extends InputPartition
+
+case class NoopScanConfigBuilder(readSchema: StructType) extends ScanConfigBuilder with ScanConfig {
+  override def build(): ScanConfig = this
+}
 
 object SimpleReaderFactory extends PartitionReaderFactory {
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
@@ -391,68 +378,87 @@ object SimpleReaderFactory extends PartitionReaderFactory {
   }
 }
 
-abstract class SimpleBatchTable extends Table with SupportsBatchRead  {
+abstract class SimpleReadSupport extends BatchReadSupport {
+  override def fullSchema(): StructType = new StructType().add("i", "int").add("j", "int")
 
-  override def schema(): StructType = new StructType().add("i", "int").add("j", "int")
+  override def newScanConfigBuilder(): ScanConfigBuilder = {
+    NoopScanConfigBuilder(fullSchema())
+  }
 
-  override def name(): String = this.getClass.toString
+  override def createReaderFactory(config: ScanConfig): PartitionReaderFactory = {
+    SimpleReaderFactory
+  }
 }
 
-abstract class SimpleScanBuilder extends ScanBuilder
-  with Batch with Scan {
 
-  override def build(): Scan = this
+class SimpleSinglePartitionSource extends DataSourceV2 with BatchReadSupportProvider {
 
-  override def toBatch: Batch = this
-
-  override def readSchema(): StructType = new StructType().add("i", "int").add("j", "int")
-
-  override def createReaderFactory(): PartitionReaderFactory = SimpleReaderFactory
-}
-
-class SimpleSinglePartitionSource extends TableProvider {
-
-  class MyScanBuilder extends SimpleScanBuilder {
-    override def planInputPartitions(): Array[InputPartition] = {
+  class ReadSupport extends SimpleReadSupport {
+    override def planInputPartitions(config: ScanConfig): Array[InputPartition] = {
       Array(RangeInputPartition(0, 5))
     }
   }
 
-  override def getTable(options: DataSourceOptions): Table = new SimpleBatchTable {
-    override def newScanBuilder(options: DataSourceOptions): ScanBuilder = {
-      new MyScanBuilder()
-    }
+  override def createBatchReadSupport(options: DataSourceOptions): BatchReadSupport = {
+    new ReadSupport
   }
 }
 
 // This class is used by pyspark tests. If this class is modified/moved, make sure pyspark
 // tests still pass.
-class SimpleDataSourceV2 extends TableProvider {
+class SimpleDataSourceV2 extends DataSourceV2 with BatchReadSupportProvider {
 
-  class MyScanBuilder extends SimpleScanBuilder {
-    override def planInputPartitions(): Array[InputPartition] = {
+  class ReadSupport extends SimpleReadSupport {
+    override def planInputPartitions(config: ScanConfig): Array[InputPartition] = {
       Array(RangeInputPartition(0, 5), RangeInputPartition(5, 10))
     }
   }
 
-  override def getTable(options: DataSourceOptions): Table = new SimpleBatchTable {
-    override def newScanBuilder(options: DataSourceOptions): ScanBuilder = {
-      new MyScanBuilder()
-    }
+  override def createBatchReadSupport(options: DataSourceOptions): BatchReadSupport = {
+    new ReadSupport
   }
 }
 
-class AdvancedDataSourceV2 extends TableProvider {
+class AdvancedDataSourceV2 extends DataSourceV2 with BatchReadSupportProvider {
 
-  override def getTable(options: DataSourceOptions): Table = new SimpleBatchTable {
-    override def newScanBuilder(options: DataSourceOptions): ScanBuilder = {
-      new AdvancedScanBuilder()
+  class ReadSupport extends SimpleReadSupport {
+    override def newScanConfigBuilder(): ScanConfigBuilder = new AdvancedScanConfigBuilder()
+
+    override def planInputPartitions(config: ScanConfig): Array[InputPartition] = {
+      val filters = config.asInstanceOf[AdvancedScanConfigBuilder].filters
+
+      val lowerBound = filters.collectFirst {
+        case GreaterThan("i", v: Int) => v
+      }
+
+      val res = scala.collection.mutable.ArrayBuffer.empty[InputPartition]
+
+      if (lowerBound.isEmpty) {
+        res.append(RangeInputPartition(0, 5))
+        res.append(RangeInputPartition(5, 10))
+      } else if (lowerBound.get < 4) {
+        res.append(RangeInputPartition(lowerBound.get + 1, 5))
+        res.append(RangeInputPartition(5, 10))
+      } else if (lowerBound.get < 9) {
+        res.append(RangeInputPartition(lowerBound.get + 1, 10))
+      }
+
+      res.toArray
     }
+
+    override def createReaderFactory(config: ScanConfig): PartitionReaderFactory = {
+      val requiredSchema = config.asInstanceOf[AdvancedScanConfigBuilder].requiredSchema
+      new AdvancedReaderFactory(requiredSchema)
+    }
+  }
+
+  override def createBatchReadSupport(options: DataSourceOptions): BatchReadSupport = {
+    new ReadSupport
   }
 }
 
-class AdvancedScanBuilder extends ScanBuilder
-  with Scan with SupportsPushDownFilters with SupportsPushDownRequiredColumns {
+class AdvancedScanConfigBuilder extends ScanConfigBuilder with ScanConfig
+  with SupportsPushDownRequiredColumns with SupportsPushDownFilters {
 
   var requiredSchema = new StructType().add("i", "int").add("j", "int")
   var filters = Array.empty[Filter]
@@ -474,40 +480,10 @@ class AdvancedScanBuilder extends ScanBuilder
 
   override def pushedFilters(): Array[Filter] = filters
 
-  override def build(): Scan = this
-
-  override def toBatch: Batch = new AdvancedBatch(filters, requiredSchema)
-}
-
-class AdvancedBatch(val filters: Array[Filter], val requiredSchema: StructType) extends Batch {
-
-  override def planInputPartitions(): Array[InputPartition] = {
-    val lowerBound = filters.collectFirst {
-      case GreaterThan("i", v: Int) => v
-    }
-
-    val res = scala.collection.mutable.ArrayBuffer.empty[InputPartition]
-
-    if (lowerBound.isEmpty) {
-      res.append(RangeInputPartition(0, 5))
-      res.append(RangeInputPartition(5, 10))
-    } else if (lowerBound.get < 4) {
-      res.append(RangeInputPartition(lowerBound.get + 1, 5))
-      res.append(RangeInputPartition(5, 10))
-    } else if (lowerBound.get < 9) {
-      res.append(RangeInputPartition(lowerBound.get + 1, 10))
-    }
-
-    res.toArray
-  }
-
-  override def createReaderFactory(): PartitionReaderFactory = {
-    new AdvancedReaderFactory(requiredSchema)
-  }
+  override def build(): ScanConfig = this
 }
 
 class AdvancedReaderFactory(requiredSchema: StructType) extends PartitionReaderFactory {
-
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] = {
     val RangeInputPartition(start, end) = partition
     new PartitionReader[InternalRow] {
@@ -532,47 +508,39 @@ class AdvancedReaderFactory(requiredSchema: StructType) extends PartitionReaderF
 }
 
 
-class SchemaRequiredDataSource extends TableProvider {
+class SchemaRequiredDataSource extends DataSourceV2 with BatchReadSupportProvider {
 
-  class MyScanBuilder(schema: StructType) extends SimpleScanBuilder {
-    override def planInputPartitions(): Array[InputPartition] = Array.empty
+  class ReadSupport(val schema: StructType) extends SimpleReadSupport {
+    override def fullSchema(): StructType = schema
 
-    override def readSchema(): StructType = schema
+    override def planInputPartitions(config: ScanConfig): Array[InputPartition] =
+      Array.empty
   }
 
-  override def getTable(options: DataSourceOptions): Table = {
+  override def createBatchReadSupport(options: DataSourceOptions): BatchReadSupport = {
     throw new IllegalArgumentException("requires a user-supplied schema")
   }
 
-  override def getTable(options: DataSourceOptions, schema: StructType): Table = {
-    val userGivenSchema = schema
-    new SimpleBatchTable {
-      override def schema(): StructType = userGivenSchema
-
-      override def newScanBuilder(options: DataSourceOptions): ScanBuilder = {
-        new MyScanBuilder(userGivenSchema)
-      }
-    }
+  override def createBatchReadSupport(
+      schema: StructType, options: DataSourceOptions): BatchReadSupport = {
+    new ReadSupport(schema)
   }
 }
 
-class ColumnarDataSourceV2 extends TableProvider {
+class ColumnarDataSourceV2 extends DataSourceV2 with BatchReadSupportProvider {
 
-  class MyScanBuilder extends SimpleScanBuilder {
-
-    override def planInputPartitions(): Array[InputPartition] = {
+  class ReadSupport extends SimpleReadSupport {
+    override def planInputPartitions(config: ScanConfig): Array[InputPartition] = {
       Array(RangeInputPartition(0, 50), RangeInputPartition(50, 90))
     }
 
-    override def createReaderFactory(): PartitionReaderFactory = {
+    override def createReaderFactory(config: ScanConfig): PartitionReaderFactory = {
       ColumnarReaderFactory
     }
   }
 
-  override def getTable(options: DataSourceOptions): Table = new SimpleBatchTable {
-    override def newScanBuilder(options: DataSourceOptions): ScanBuilder = {
-      new MyScanBuilder()
-    }
+  override def createBatchReadSupport(options: DataSourceOptions): BatchReadSupport = {
+    new ReadSupport
   }
 }
 
@@ -622,29 +590,21 @@ object ColumnarReaderFactory extends PartitionReaderFactory {
 }
 
 
-class PartitionAwareDataSource extends TableProvider {
+class PartitionAwareDataSource extends DataSourceV2 with BatchReadSupportProvider {
 
-  class MyScanBuilder extends SimpleScanBuilder
-    with SupportsReportPartitioning{
-
-    override def planInputPartitions(): Array[InputPartition] = {
+  class ReadSupport extends SimpleReadSupport with SupportsReportPartitioning {
+    override def planInputPartitions(config: ScanConfig): Array[InputPartition] = {
       // Note that we don't have same value of column `a` across partitions.
       Array(
         SpecificInputPartition(Array(1, 1, 3), Array(4, 4, 6)),
         SpecificInputPartition(Array(2, 4, 4), Array(6, 2, 2)))
     }
 
-    override def createReaderFactory(): PartitionReaderFactory = {
+    override def createReaderFactory(config: ScanConfig): PartitionReaderFactory = {
       SpecificReaderFactory
     }
 
-    override def outputPartitioning(): Partitioning = new MyPartitioning
-  }
-
-  override def getTable(options: DataSourceOptions): Table = new SimpleBatchTable {
-    override def newScanBuilder(options: DataSourceOptions): ScanBuilder = {
-      new MyScanBuilder()
-    }
+    override def outputPartitioning(config: ScanConfig): Partitioning = new MyPartitioning
   }
 
   class MyPartitioning extends Partitioning {
@@ -654,6 +614,10 @@ class PartitionAwareDataSource extends TableProvider {
       case c: ClusteredDistribution => c.clusteredColumns.contains("i")
       case _ => false
     }
+  }
+
+  override def createBatchReadSupport(options: DataSourceOptions): BatchReadSupport = {
+    new ReadSupport
   }
 }
 
@@ -673,19 +637,6 @@ object SpecificReaderFactory extends PartitionReaderFactory {
       override def get(): InternalRow = InternalRow(p.i(current), p.j(current))
 
       override def close(): Unit = {}
-    }
-  }
-}
-
-class SchemaReadAttemptException(m: String) extends RuntimeException(m)
-
-class SimpleWriteOnlyDataSource extends SimpleWritableDataSource {
-
-  override def getTable(options: DataSourceOptions): Table = {
-    new MyTable(options) {
-      override def schema(): StructType = {
-        throw new SchemaReadAttemptException("schema should not be read.")
-      }
     }
   }
 }

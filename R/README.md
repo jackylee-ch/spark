@@ -39,7 +39,15 @@ To set other options like driver memory, executor memory etc. you can pass in th
 
 #### Using SparkR from RStudio
 
-If you wish to use SparkR from RStudio, please refer [SparkR documentation](https://spark.apache.org/docs/latest/sparkr.html#starting-up-from-rstudio).
+If you wish to use SparkR from RStudio or other R frontends you will need to set some environment variables which point SparkR to your Spark installation. For example
+```R
+# Set this to where Spark is installed
+Sys.setenv(SPARK_HOME="/Users/username/spark")
+# This line loads SparkR from the installed directory
+.libPaths(c(file.path(Sys.getenv("SPARK_HOME"), "R", "lib"), .libPaths()))
+library(SparkR)
+sparkR.session()
+```
 
 #### Making changes to SparkR
 

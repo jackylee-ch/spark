@@ -17,21 +17,21 @@
 
 package org.apache.spark.sql.sources.v2.reader;
 
-import org.apache.spark.annotation.Evolving;
+import org.apache.spark.annotation.InterfaceStability;
 import org.apache.spark.sql.sources.v2.reader.partitioning.Partitioning;
 
 /**
- * A mix in interface for {@link Scan}. Data sources can implement this interface to
+ * A mix in interface for {@link BatchReadSupport}. Data sources can implement this interface to
  * report data partitioning and try to avoid shuffle at Spark side.
  *
- * Note that, when a {@link Scan} implementation creates exactly one {@link InputPartition},
+ * Note that, when a {@link ReadSupport} implementation creates exactly one {@link InputPartition},
  * Spark may avoid adding a shuffle even if the reader does not implement this interface.
  */
-@Evolving
-public interface SupportsReportPartitioning extends Scan {
+@InterfaceStability.Evolving
+public interface SupportsReportPartitioning extends ReadSupport {
 
   /**
    * Returns the output data partitioning that this reader guarantees.
    */
-  Partitioning outputPartitioning();
+  Partitioning outputPartitioning(ScanConfig config);
 }

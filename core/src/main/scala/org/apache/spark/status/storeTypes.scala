@@ -68,8 +68,7 @@ private[spark] class ExecutorSummaryWrapper(val info: ExecutorSummary) {
  */
 private[spark] class JobDataWrapper(
     val info: JobData,
-    val skippedStages: Set[Int],
-    val sqlExecutionId: Option[Long]) {
+    val skippedStages: Set[Int]) {
 
   @JsonIgnore @KVIndex
   private def id: Int = info.jobId
@@ -284,10 +283,7 @@ private[spark] class TaskDataWrapper(
       speculative,
       accumulatorUpdates,
       errorMessage,
-      metrics,
-      executorLogs = null,
-      schedulerDelay = 0L,
-      gettingResultTime = 0L)
+      metrics)
   }
 
   @JsonIgnore @KVIndex(TaskIndexNames.STAGE)

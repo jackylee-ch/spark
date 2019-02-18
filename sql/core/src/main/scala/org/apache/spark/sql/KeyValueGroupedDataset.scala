@@ -19,14 +19,13 @@ package org.apache.spark.sql
 
 import scala.collection.JavaConverters._
 
-import org.apache.spark.annotation.{Evolving, Experimental}
+import org.apache.spark.annotation.{Experimental, InterfaceStability}
 import org.apache.spark.api.java.function._
 import org.apache.spark.sql.catalyst.encoders.{encoderFor, ExpressionEncoder}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, CreateStruct}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.execution.QueryExecution
 import org.apache.spark.sql.expressions.ReduceAggregator
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.streaming.{GroupState, GroupStateTimeout, OutputMode}
 
 /**
@@ -38,7 +37,7 @@ import org.apache.spark.sql.streaming.{GroupState, GroupStateTimeout, OutputMode
  * @since 2.0.0
  */
 @Experimental
-@Evolving
+@InterfaceStability.Evolving
 class KeyValueGroupedDataset[K, V] private[sql](
     kEncoder: Encoder[K],
     vEncoder: Encoder[V],
@@ -238,7 +237,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    * @since 2.2.0
    */
   @Experimental
-  @Evolving
+  @InterfaceStability.Evolving
   def mapGroupsWithState[S: Encoder, U: Encoder](
       func: (K, Iterator[V], GroupState[S]) => U): Dataset[U] = {
     val flatMapFunc = (key: K, it: Iterator[V], s: GroupState[S]) => Iterator(func(key, it, s))
@@ -273,7 +272,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    * @since 2.2.0
    */
   @Experimental
-  @Evolving
+  @InterfaceStability.Evolving
   def mapGroupsWithState[S: Encoder, U: Encoder](
       timeoutConf: GroupStateTimeout)(
       func: (K, Iterator[V], GroupState[S]) => U): Dataset[U] = {
@@ -310,7 +309,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    * @since 2.2.0
    */
   @Experimental
-  @Evolving
+  @InterfaceStability.Evolving
   def mapGroupsWithState[S, U](
       func: MapGroupsWithStateFunction[K, V, S, U],
       stateEncoder: Encoder[S],
@@ -341,7 +340,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    * @since 2.2.0
    */
   @Experimental
-  @Evolving
+  @InterfaceStability.Evolving
   def mapGroupsWithState[S, U](
       func: MapGroupsWithStateFunction[K, V, S, U],
       stateEncoder: Encoder[S],
@@ -372,7 +371,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    * @since 2.2.0
    */
   @Experimental
-  @Evolving
+  @InterfaceStability.Evolving
   def flatMapGroupsWithState[S: Encoder, U: Encoder](
       outputMode: OutputMode,
       timeoutConf: GroupStateTimeout)(
@@ -414,7 +413,7 @@ class KeyValueGroupedDataset[K, V] private[sql](
    * @since 2.2.0
    */
   @Experimental
-  @Evolving
+  @InterfaceStability.Evolving
   def flatMapGroupsWithState[S, U](
       func: FlatMapGroupsWithStateFunction[K, V, S, U],
       outputMode: OutputMode,
@@ -458,13 +457,9 @@ class KeyValueGroupedDataset[K, V] private[sql](
     val encoders = columns.map(_.encoder)
     val namedColumns =
       columns.map(_.withInputType(vExprEnc, dataAttributes).named)
-    val keyColumn = if (!kExprEnc.isSerializedAsStructForTopLevel) {
+    val keyColumn = if (kExprEnc.flat) {
       assert(groupingAttributes.length == 1)
-      if (SQLConf.get.nameNonStructGroupingKeyAsValue) {
-        groupingAttributes.head
-      } else {
-        Alias(groupingAttributes.head, "key")()
-      }
+      groupingAttributes.head
     } else {
       Alias(CreateStruct(groupingAttributes), "key")()
     }

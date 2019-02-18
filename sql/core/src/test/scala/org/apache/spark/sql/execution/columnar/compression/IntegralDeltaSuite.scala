@@ -46,7 +46,6 @@ class IntegralDeltaSuite extends SparkFunSuite {
         (input.tail, input.init).zipped.map {
           case (x: Int, y: Int) => (x - y).toLong
           case (x: Long, y: Long) => x - y
-          case other => fail(s"Unexpected input $other")
         }
       }
 
@@ -117,7 +116,7 @@ class IntegralDeltaSuite extends SparkFunSuite {
       val row = new GenericInternalRow(1)
       val nullRow = new GenericInternalRow(1)
       nullRow.setNullAt(0)
-      input.foreach { value =>
+      input.map { value =>
         if (value == nullValue) {
           builder.appendFrom(nullRow, 0)
         } else {

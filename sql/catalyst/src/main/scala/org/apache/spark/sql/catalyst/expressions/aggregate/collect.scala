@@ -86,13 +86,7 @@ abstract class Collect[T <: Growable[Any] with Iterable[Any]] extends TypedImper
  * Collect a list of elements.
  */
 @ExpressionDescription(
-  usage = "_FUNC_(expr) - Collects and returns a list of non-unique elements.",
-  examples = """
-    Examples:
-      > SELECT _FUNC_(col) FROM VALUES (1), (2), (1) AS tab(col);
-       [1,2,1]
-  """,
-  since = "2.0.0")
+  usage = "_FUNC_(expr) - Collects and returns a list of non-unique elements.")
 case class CollectList(
     child: Expression,
     mutableAggBufferOffset: Int = 0,
@@ -115,13 +109,7 @@ case class CollectList(
  * Collect a set of unique elements.
  */
 @ExpressionDescription(
-  usage = "_FUNC_(expr) - Collects and returns a set of unique elements.",
-  examples = """
-    Examples:
-      > SELECT _FUNC_(col) FROM VALUES (1), (2), (1) AS tab(col);
-       [1,2]
-  """,
-  since = "2.0.0")
+  usage = "_FUNC_(expr) - Collects and returns a set of unique elements.")
 case class CollectSet(
     child: Expression,
     mutableAggBufferOffset: Int = 0,

@@ -19,7 +19,6 @@ package org.apache.spark.sql.catalyst.analysis
 
 import java.util.TimeZone
 
-import org.apache.spark.sql.catalyst.QueryPlanningTracker
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.logical._
@@ -110,7 +109,7 @@ class ResolveGroupingAnalyticsSuite extends AnalysisTest {
       Seq(UnresolvedAlias(Multiply(unresolved_a, Literal(2))),
         unresolved_b, UnresolvedAlias(count(unresolved_c))))
 
-    val resultPlan = getAnalyzer(true).executeAndCheck(originalPlan2, new QueryPlanningTracker)
+    val resultPlan = getAnalyzer(true).executeAndCheck(originalPlan2)
     val gExpressions = resultPlan.asInstanceOf[Aggregate].groupingExpressions
     assert(gExpressions.size == 3)
     val firstGroupingExprAttrName =

@@ -18,13 +18,14 @@ package org.apache.spark.deploy.k8s.features
 
 import io.fabric8.kubernetes.api.model.{ContainerBuilder, HasMetadata, PodBuilder, VolumeBuilder, VolumeMountBuilder}
 
-import org.apache.spark.deploy.k8s.{KubernetesConf, SparkPod}
+import org.apache.spark.deploy.k8s.{KubernetesConf, KubernetesRoleSpecificConf, SparkPod}
 
-private[spark] class MountSecretsFeatureStep(kubernetesConf: KubernetesConf)
+private[spark] class MountSecretsFeatureStep(
+    kubernetesConf: KubernetesConf[_ <: KubernetesRoleSpecificConf])
   extends KubernetesFeatureConfigStep {
   override def configurePod(pod: SparkPod): SparkPod = {
     val addedVolumes = kubernetesConf
-      .secretNamesToMountPaths
+      .roleSecretNamesToMountPaths
       .keys
       .map(secretName =>
         new VolumeBuilder()
@@ -39,7 +40,7 @@ private[spark] class MountSecretsFeatureStep(kubernetesConf: KubernetesConf)
         .endSpec()
       .build()
     val addedVolumeMounts = kubernetesConf
-      .secretNamesToMountPaths
+      .roleSecretNamesToMountPaths
       .map {
         case (secretName, mountPath) =>
           new VolumeMountBuilder()
@@ -52,6 +53,10 @@ private[spark] class MountSecretsFeatureStep(kubernetesConf: KubernetesConf)
       .build()
     SparkPod(podWithVolumes, containerWithMounts)
   }
+
+  override def getAdditionalPodSystemProperties(): Map[String, String] = Map.empty
+
+  override def getAdditionalKubernetesResources(): Seq[HasMetadata] = Seq.empty
 
   private def secretVolumeName(secretName: String): String = s"$secretName-volume"
 }

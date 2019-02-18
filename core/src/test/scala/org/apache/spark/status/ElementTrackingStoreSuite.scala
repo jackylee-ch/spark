@@ -20,10 +20,11 @@ package org.apache.spark.status
 import org.mockito.Mockito._
 
 import org.apache.spark.{SparkConf, SparkFunSuite}
-import org.apache.spark.internal.config.Status._
 import org.apache.spark.util.kvstore._
 
 class ElementTrackingStoreSuite extends SparkFunSuite {
+
+  import config._
 
   test("tracking for multiple types") {
     val store = mock(classOf[KVStore])

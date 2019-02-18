@@ -34,7 +34,6 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.catalog.CatalogTypes.TablePartitionSpec
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.BindReferences.bindReferences
 import org.apache.spark.sql.catalyst.plans.physical.HashPartitioning
 import org.apache.spark.sql.catalyst.util.{CaseInsensitiveMap, DateTimeUtils}
 import org.apache.spark.sql.execution.{SortExec, SparkPlan, SQLExecution}
@@ -98,7 +97,7 @@ object FileFormatWriter extends Logging {
     val caseInsensitiveOptions = CaseInsensitiveMap(options)
 
     val dataSchema = dataColumns.toStructType
-    DataSourceUtils.verifySchema(fileFormat, dataSchema)
+    DataSourceUtils.verifyWriteSchema(fileFormat, dataSchema)
     // Note: prepareWrite has side effect. It sets "job".
     val outputWriterFactory =
       fileFormat.prepareWrite(sparkSession, job, caseInsensitiveOptions, dataSchema)
@@ -146,8 +145,9 @@ object FileFormatWriter extends Logging {
         // SPARK-21165: the `requiredOrdering` is based on the attributes from analyzed plan, and
         // the physical plan may have different attribute ids due to optimizer removing some
         // aliases. Here we bind the expression ahead to avoid potential attribute ids mismatch.
-        val orderingExpr = bindReferences(
-          requiredOrdering.map(SortOrder(_, Ascending)), outputSpec.outputColumns)
+        val orderingExpr = requiredOrdering
+          .map(SortOrder(_, Ascending))
+          .map(BindReferences.bindReference(_, outputSpec.outputColumns))
         SortExec(
           orderingExpr,
           global = false,
@@ -162,17 +162,15 @@ object FileFormatWriter extends Logging {
         rdd
       }
 
-      val jobIdInstant = new Date().getTime
       val ret = new Array[WriteTaskResult](rddWithNonEmptyPartitions.partitions.length)
       sparkSession.sparkContext.runJob(
         rddWithNonEmptyPartitions,
         (taskContext: TaskContext, iter: Iterator[InternalRow]) => {
           executeTask(
             description = description,
-            jobIdInstant = jobIdInstant,
             sparkStageId = taskContext.stageId(),
             sparkPartitionId = taskContext.partitionId(),
-            sparkAttemptNumber = taskContext.taskAttemptId().toInt & Integer.MAX_VALUE,
+            sparkAttemptNumber = taskContext.attemptNumber(),
             committer,
             iterator = iter)
         },
@@ -185,15 +183,15 @@ object FileFormatWriter extends Logging {
       val commitMsgs = ret.map(_.commitMsg)
 
       committer.commitJob(job, commitMsgs)
-      logInfo(s"Write Job ${description.uuid} committed.")
+      logInfo(s"Job ${job.getJobID} committed.")
 
       processStats(description.statsTrackers, ret.map(_.summary.stats))
-      logInfo(s"Finished processing stats for write job ${description.uuid}.")
+      logInfo(s"Finished processing stats for job ${job.getJobID}.")
 
       // return a set of all the partition paths that were updated during this job
       ret.map(_.summary.updatedPartitions).reduceOption(_ ++ _).getOrElse(Set.empty)
     } catch { case cause: Throwable =>
-      logError(s"Aborting job ${description.uuid}.", cause)
+      logError(s"Aborting job ${job.getJobID}.", cause)
       committer.abortJob(job)
       throw new SparkException("Job aborted.", cause)
     }
@@ -202,14 +200,13 @@ object FileFormatWriter extends Logging {
   /** Writes data out in a single Spark task. */
   private def executeTask(
       description: WriteJobDescription,
-      jobIdInstant: Long,
       sparkStageId: Int,
       sparkPartitionId: Int,
       sparkAttemptNumber: Int,
       committer: FileCommitProtocol,
       iterator: Iterator[InternalRow]): WriteTaskResult = {
 
-    val jobId = SparkHadoopWriterUtils.createJobID(new Date(jobIdInstant), sparkStageId)
+    val jobId = SparkHadoopWriterUtils.createJobID(new Date, sparkStageId)
     val taskId = new TaskID(jobId, TaskType.MAP, sparkPartitionId)
     val taskAttemptId = new TaskAttemptID(taskId, sparkAttemptNumber)
 
@@ -262,7 +259,7 @@ object FileFormatWriter extends Logging {
    * For every registered [[WriteJobStatsTracker]], call `processStats()` on it, passing it
    * the corresponding [[WriteTaskStats]] from all executors.
    */
-  private[datasources] def processStats(
+  private def processStats(
       statsTrackers: Seq[WriteJobStatsTracker],
       statsPerTask: Seq[Seq[WriteTaskStats]])
   : Unit = {

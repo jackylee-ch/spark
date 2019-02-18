@@ -120,9 +120,7 @@ private[spark] class YarnAllocatorBlacklistTracker(
     if (removals.nonEmpty) {
       logInfo(s"removing nodes from YARN application master's blacklist: $removals")
     }
-    if (additions.nonEmpty || removals.nonEmpty) {
-      amClient.updateBlacklist(additions.asJava, removals.asJava)
-    }
+    amClient.updateBlacklist(additions.asJava, removals.asJava)
     currentBlacklistedYarnNodes = nodesToBlacklist
   }
 

@@ -52,10 +52,7 @@ class AppStatusUtilsSuite extends SparkFunSuite {
         inputMetrics = null,
         outputMetrics = null,
         shuffleReadMetrics = null,
-        shuffleWriteMetrics = null)),
-      executorLogs = null,
-      schedulerDelay = 0L,
-      gettingResultTime = 0L)
+        shuffleWriteMetrics = null)))
     assert(AppStatusUtils.schedulerDelay(runningTask) === 0L)
 
     val finishedTask = new TaskData(
@@ -86,10 +83,7 @@ class AppStatusUtilsSuite extends SparkFunSuite {
         inputMetrics = null,
         outputMetrics = null,
         shuffleReadMetrics = null,
-        shuffleWriteMetrics = null)),
-      executorLogs = null,
-      schedulerDelay = 0L,
-      gettingResultTime = 0L)
+        shuffleWriteMetrics = null)))
     assert(AppStatusUtils.schedulerDelay(finishedTask) === 3L)
   }
 }

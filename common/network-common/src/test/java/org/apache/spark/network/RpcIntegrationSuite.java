@@ -371,33 +371,23 @@ public class RpcIntegrationSuite {
 
   private void assertErrorAndClosed(RpcResult result, String expectedError) {
     assertTrue("unexpected success: " + result.successMessages, result.successMessages.isEmpty());
+    // we expect 1 additional error, which contains *either* "closed" or "Connection reset"
     Set<String> errors = result.errorMessages;
     assertEquals("Expected 2 errors, got " + errors.size() + "errors: " +
         errors, 2, errors.size());
 
-    // We expect 1 additional error due to closed connection and here are possible keywords in the
-    // error message.
-    Set<String> possibleClosedErrors = Sets.newHashSet(
-        "closed",
-        "Connection reset",
-        "java.nio.channels.ClosedChannelException",
-        "java.io.IOException: Broken pipe"
-    );
     Set<String> containsAndClosed = Sets.newHashSet(expectedError);
-    containsAndClosed.addAll(possibleClosedErrors);
+    containsAndClosed.add("closed");
+    containsAndClosed.add("Connection reset");
 
     Pair<Set<String>, Set<String>> r = checkErrorsContain(errors, containsAndClosed);
 
-    assertTrue("Got a non-empty set " + r.getLeft(), r.getLeft().isEmpty());
-
     Set<String> errorsNotFound = r.getRight();
-    assertEquals(
-        "The size of " + errorsNotFound + " was not " + (possibleClosedErrors.size() - 1),
-        possibleClosedErrors.size() - 1,
-        errorsNotFound.size());
-    for (String err: errorsNotFound) {
-      assertTrue("Found a wrong error " + err, containsAndClosed.contains(err));
-    }
+    assertEquals(1, errorsNotFound.size());
+    String err = errorsNotFound.iterator().next();
+    assertTrue(err.equals("closed") || err.equals("Connection reset"));
+
+    assertTrue(r.getLeft().isEmpty());
   }
 
   private Pair<Set<String>, Set<String>> checkErrorsContain(

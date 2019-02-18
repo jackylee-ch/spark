@@ -52,7 +52,7 @@ public final class UploadStream extends AbstractMessage implements RequestMessag
   }
 
   @Override
-  public Message.Type type() { return Type.UploadStream; }
+  public Type type() { return Type.UploadStream; }
 
   @Override
   public int encodedLength() {

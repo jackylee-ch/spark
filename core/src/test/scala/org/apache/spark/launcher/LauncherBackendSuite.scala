@@ -26,7 +26,6 @@ import org.scalatest.Matchers
 import org.scalatest.concurrent.Eventually._
 
 import org.apache.spark._
-import org.apache.spark.internal.config.UI.UI_ENABLED
 import org.apache.spark.util.Utils
 
 class LauncherBackendSuite extends SparkFunSuite with Matchers {
@@ -49,7 +48,7 @@ class LauncherBackendSuite extends SparkFunSuite with Matchers {
     val handle = new SparkLauncher(env)
       .setSparkHome(sys.props("spark.test.home"))
       .setConf(SparkLauncher.DRIVER_EXTRA_CLASSPATH, System.getProperty("java.class.path"))
-      .setConf(UI_ENABLED.key, "false")
+      .setConf("spark.ui.enabled", "false")
       .setConf(SparkLauncher.DRIVER_EXTRA_JAVA_OPTIONS, s"-Dtest.appender=console")
       .setMaster(master)
       .setAppResource(SparkLauncher.NO_RESOURCE)

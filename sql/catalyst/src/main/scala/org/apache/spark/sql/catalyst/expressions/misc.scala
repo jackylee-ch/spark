@@ -23,7 +23,6 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.util.RandomUUIDGenerator
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
@@ -41,7 +40,7 @@ case class PrintToStderr(child: Expression) extends UnaryExpression {
     input
   }
 
-  private val outputPrefix = s"Result of ${child.simpleString(SQLConf.get.maxToStringFields)} is "
+  private val outputPrefix = s"Result of ${child.simpleString} is "
 
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     val outputPrefixField = ctx.addReferenceObj("outputPrefix", outputPrefix)
@@ -73,7 +72,7 @@ case class AssertTrue(child: Expression) extends UnaryExpression with ImplicitCa
 
   override def prettyName: String = "assert_true"
 
-  private val errMsg = s"'${child.simpleString(SQLConf.get.maxToStringFields)}' is not true!"
+  private val errMsg = s"'${child.simpleString}' is not true!"
 
   override def eval(input: InternalRow) : Any = {
     val v = child.eval(input)

@@ -107,7 +107,7 @@ private[spark] class SchedulerExtensionServices extends SchedulerExtensionServic
 
     services = sparkContext.conf.get(SCHEDULER_SERVICES).map { sClass =>
       val instance = Utils.classForName(sClass)
-        .getConstructor().newInstance()
+        .newInstance()
         .asInstanceOf[SchedulerExtensionService]
       // bind this service
       instance.start(binding)

@@ -115,7 +115,6 @@ abstract class Attribute extends LeafExpression with NamedExpression with NullIn
   def withQualifier(newQualifier: Seq[String]): Attribute
   def withName(newName: String): Attribute
   def withMetadata(newMetadata: Metadata): Attribute
-  def withExprId(newExprId: ExprId): Attribute
 
   override def toAttribute: Attribute = this
   def newInstance(): Attribute
@@ -129,9 +128,6 @@ abstract class Attribute extends LeafExpression with NamedExpression with NullIn
  *
  * Note that exprId and qualifiers are in a separate parameter list because
  * we only pattern match on child and name.
- *
- * Note that when creating a new Alias, all the [[AttributeReference]] that refer to
- * the original alias should be updated to the new one.
  *
  * @param child The computation being performed
  * @param name The name to be associated with the result of computing [[child]].
@@ -303,7 +299,7 @@ case class AttributeReference(
     }
   }
 
-  override def withExprId(newExprId: ExprId): AttributeReference = {
+  def withExprId(newExprId: ExprId): AttributeReference = {
     if (exprId == newExprId) {
       this
     } else {
@@ -311,7 +307,7 @@ case class AttributeReference(
     }
   }
 
-  override def withMetadata(newMetadata: Metadata): AttributeReference = {
+  override def withMetadata(newMetadata: Metadata): Attribute = {
     AttributeReference(name, dataType, nullable, newMetadata)(exprId, qualifier)
   }
 
@@ -330,9 +326,7 @@ case class AttributeReference(
 
   // Since the expression id is not in the first constructor it is missing from the default
   // tree string.
-  override def simpleString(maxFields: Int): String = {
-    s"$name#${exprId.id}: ${dataType.simpleString(maxFields)}"
-  }
+  override def simpleString: String = s"$name#${exprId.id}: ${dataType.simpleString}"
 
   override def sql: String = {
     val qualifierPrefix = if (qualifier.nonEmpty) qualifier.mkString(".") + "." else ""
@@ -368,8 +362,6 @@ case class PrettyAttribute(
     throw new UnsupportedOperationException
   override def qualifier: Seq[String] = throw new UnsupportedOperationException
   override def exprId: ExprId = throw new UnsupportedOperationException
-  override def withExprId(newExprId: ExprId): Attribute =
-    throw new UnsupportedOperationException
   override def nullable: Boolean = true
 }
 

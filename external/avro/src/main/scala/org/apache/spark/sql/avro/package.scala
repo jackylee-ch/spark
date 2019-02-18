@@ -20,7 +20,6 @@ package org.apache.spark.sql
 import org.apache.spark.annotation.Experimental
 
 package object avro {
-
   /**
    * Converts a binary column of avro format into its corresponding catalyst value. The specified
    * schema must match the read data, otherwise the behavior is undefined: it may fail or return
@@ -32,11 +31,9 @@ package object avro {
    * @since 2.4.0
    */
   @Experimental
-  @deprecated("Please use 'org.apache.spark.sql.avro.functions.from_avro' instead.", "3.0.0")
-  def from_avro(
-      data: Column,
-      jsonFormatSchema: String): Column =
-    org.apache.spark.sql.avro.functions.from_avro(data, jsonFormatSchema)
+  def from_avro(data: Column, jsonFormatSchema: String): Column = {
+    new Column(AvroDataToCatalyst(data.expr, jsonFormatSchema))
+  }
 
   /**
    * Converts a column into binary of avro format.
@@ -46,6 +43,7 @@ package object avro {
    * @since 2.4.0
    */
   @Experimental
-  @deprecated("Please use 'org.apache.spark.sql.avro.functions.to_avro' instead.", "3.0.0")
-  def to_avro(data: Column): Column = org.apache.spark.sql.avro.functions.to_avro(data)
+  def to_avro(data: Column): Column = {
+    new Column(CatalystDataToAvro(data.expr))
+  }
 }

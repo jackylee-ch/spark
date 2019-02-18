@@ -41,7 +41,7 @@ public class GetSchemasOperation extends MetadataOperation {
   .addStringColumn("TABLE_SCHEM", "Schema name.")
   .addStringColumn("TABLE_CATALOG", "Catalog name.");
 
-  protected RowSet rowSet;
+  private RowSet rowSet;
 
   protected GetSchemasOperation(HiveSession parentSession,
       String catalogName, String schemaName) {

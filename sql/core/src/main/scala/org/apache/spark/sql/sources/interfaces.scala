@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.sources
 
-import org.apache.spark.annotation._
+import org.apache.spark.annotation.{DeveloperApi, Experimental, InterfaceStability}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
@@ -35,7 +35,7 @@ import org.apache.spark.sql.types.StructType
  *
  * @since 1.5.0
  */
-@Stable
+@InterfaceStability.Stable
 trait DataSourceRegister {
 
   /**
@@ -65,7 +65,7 @@ trait DataSourceRegister {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait RelationProvider {
   /**
    * Returns a new base relation with the given parameters.
@@ -96,7 +96,7 @@ trait RelationProvider {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait SchemaRelationProvider {
   /**
    * Returns a new base relation with the given parameters and user defined schema.
@@ -117,7 +117,7 @@ trait SchemaRelationProvider {
  * @since 2.0.0
  */
 @Experimental
-@Unstable
+@InterfaceStability.Unstable
 trait StreamSourceProvider {
 
   /**
@@ -148,7 +148,7 @@ trait StreamSourceProvider {
  * @since 2.0.0
  */
 @Experimental
-@Unstable
+@InterfaceStability.Unstable
 trait StreamSinkProvider {
   def createSink(
       sqlContext: SQLContext,
@@ -160,7 +160,7 @@ trait StreamSinkProvider {
 /**
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait CreatableRelationProvider {
   /**
    * Saves a DataFrame to a destination (using data source-specific parameters)
@@ -192,7 +192,7 @@ trait CreatableRelationProvider {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 abstract class BaseRelation {
   def sqlContext: SQLContext
   def schema: StructType
@@ -242,7 +242,7 @@ abstract class BaseRelation {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait TableScan {
   def buildScan(): RDD[Row]
 }
@@ -253,7 +253,7 @@ trait TableScan {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait PrunedScan {
   def buildScan(requiredColumns: Array[String]): RDD[Row]
 }
@@ -271,7 +271,7 @@ trait PrunedScan {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait PrunedFilteredScan {
   def buildScan(requiredColumns: Array[String], filters: Array[Filter]): RDD[Row]
 }
@@ -293,7 +293,7 @@ trait PrunedFilteredScan {
  *
  * @since 1.3.0
  */
-@Stable
+@InterfaceStability.Stable
 trait InsertableRelation {
   def insert(data: DataFrame, overwrite: Boolean): Unit
 }
@@ -309,7 +309,7 @@ trait InsertableRelation {
  * @since 1.3.0
  */
 @Experimental
-@Unstable
+@InterfaceStability.Unstable
 trait CatalystScan {
   def buildScan(requiredColumns: Seq[Attribute], filters: Seq[Expression]): RDD[Row]
 }

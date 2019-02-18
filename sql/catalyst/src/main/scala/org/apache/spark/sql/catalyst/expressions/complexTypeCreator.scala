@@ -24,6 +24,8 @@ import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.util._
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.Platform
+import org.apache.spark.unsafe.array.ByteArrayMethods
 import org.apache.spark.unsafe.types.UTF8String
 
 /**
@@ -60,7 +62,7 @@ case class CreateArray(children: Seq[Expression]) extends Expression {
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     val et = dataType.elementType
     val (allocation, assigns, arrayData) =
-      GenArrayData.genCodeToCreateArrayData(ctx, et, children, "createArray")
+      GenArrayData.genCodeToCreateArrayData(ctx, et, children, false, "createArray")
     ev.copy(
       code = code"${allocation}${assigns}",
       value = JavaCode.variable(arrayData, dataType),
@@ -77,6 +79,7 @@ private [sql] object GenArrayData {
    * @param ctx a [[CodegenContext]]
    * @param elementType data type of underlying array elements
    * @param elementsExpr concatenated set of [[Expression]] for each element of an underlying array
+   * @param isMapKey if true, throw an exception when the element is null
    * @param functionName string to include in the error message
    * @return (array allocation, concatenated assignments to each array elements, arrayData name)
    */
@@ -84,6 +87,7 @@ private [sql] object GenArrayData {
       ctx: CodegenContext,
       elementType: DataType,
       elementsExpr: Seq[Expression],
+      isMapKey: Boolean,
       functionName: String): (String, String, String) = {
     val arrayDataName = ctx.freshName("arrayData")
     val numElements = s"${elementsExpr.length}L"
@@ -99,9 +103,15 @@ private [sql] object GenArrayData {
       val assignment = if (!expr.nullable) {
         setArrayElement
       } else {
+        val isNullAssignment = if (!isMapKey) {
+          s"$arrayDataName.setNullAt($i);"
+        } else {
+          "throw new RuntimeException(\"Cannot use null as map key!\");"
+        }
+
         s"""
            |if (${eval.isNull}) {
-           |  $arrayDataName.setNullAt($i);
+           |  $isNullAssignment
            |} else {
            |  $setArrayElement
            |}
@@ -151,11 +161,11 @@ case class CreateMap(children: Seq[Expression]) extends Expression {
         "The given values of function map should all be the same type, but they are " +
           values.map(_.dataType.catalogString).mkString("[", ", ", "]"))
     } else {
-      TypeUtils.checkForMapKeyType(dataType.keyType)
+      TypeCheckResult.TypeCheckSuccess
     }
   }
 
-  override lazy val dataType: MapType = {
+  override def dataType: DataType = {
     MapType(
       keyType = TypeCoercion.findCommonTypeDifferentOnlyInNullFlags(keys.map(_.dataType))
         .getOrElse(StringType),
@@ -166,33 +176,32 @@ case class CreateMap(children: Seq[Expression]) extends Expression {
 
   override def nullable: Boolean = false
 
-  private lazy val mapBuilder = new ArrayBasedMapBuilder(dataType.keyType, dataType.valueType)
-
   override def eval(input: InternalRow): Any = {
-    var i = 0
-    while (i < keys.length) {
-      mapBuilder.put(keys(i).eval(input), values(i).eval(input))
-      i += 1
+    val keyArray = keys.map(_.eval(input)).toArray
+    if (keyArray.contains(null)) {
+      throw new RuntimeException("Cannot use null as map key!")
     }
-    mapBuilder.build()
+    val valueArray = values.map(_.eval(input)).toArray
+    new ArrayBasedMapData(new GenericArrayData(keyArray), new GenericArrayData(valueArray))
   }
 
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
+    val mapClass = classOf[ArrayBasedMapData].getName
     val MapType(keyDt, valueDt, _) = dataType
     val (allocationKeyData, assignKeys, keyArrayData) =
-      GenArrayData.genCodeToCreateArrayData(ctx, keyDt, keys, "createMap")
+      GenArrayData.genCodeToCreateArrayData(ctx, keyDt, keys, true, "createMap")
     val (allocationValueData, assignValues, valueArrayData) =
-      GenArrayData.genCodeToCreateArrayData(ctx, valueDt, values, "createMap")
-    val builderTerm = ctx.addReferenceObj("mapBuilder", mapBuilder)
+      GenArrayData.genCodeToCreateArrayData(ctx, valueDt, values, false, "createMap")
     val code =
       code"""
+       final boolean ${ev.isNull} = false;
        $allocationKeyData
        $assignKeys
        $allocationValueData
        $assignValues
-       final MapData ${ev.value} = $builderTerm.from($keyArrayData, $valueArrayData);
+       final MapData ${ev.value} = new $mapClass($keyArrayData, $valueArrayData);
       """
-    ev.copy(code = code, isNull = FalseLiteral)
+    ev.copy(code = code)
   }
 
   override def prettyName: String = "map"
@@ -215,35 +224,53 @@ case class MapFromArrays(left: Expression, right: Expression)
 
   override def inputTypes: Seq[AbstractDataType] = Seq(ArrayType, ArrayType)
 
-  override def checkInputDataTypes(): TypeCheckResult = {
-    val defaultCheck = super.checkInputDataTypes()
-    if (defaultCheck.isFailure) {
-      defaultCheck
-    } else {
-      val keyType = left.dataType.asInstanceOf[ArrayType].elementType
-      TypeUtils.checkForMapKeyType(keyType)
-    }
-  }
-
-  override def dataType: MapType = {
+  override def dataType: DataType = {
     MapType(
       keyType = left.dataType.asInstanceOf[ArrayType].elementType,
       valueType = right.dataType.asInstanceOf[ArrayType].elementType,
       valueContainsNull = right.dataType.asInstanceOf[ArrayType].containsNull)
   }
 
-  private lazy val mapBuilder = new ArrayBasedMapBuilder(dataType.keyType, dataType.valueType)
-
   override def nullSafeEval(keyArray: Any, valueArray: Any): Any = {
     val keyArrayData = keyArray.asInstanceOf[ArrayData]
     val valueArrayData = valueArray.asInstanceOf[ArrayData]
-    mapBuilder.from(keyArrayData.copy(), valueArrayData.copy())
+    if (keyArrayData.numElements != valueArrayData.numElements) {
+      throw new RuntimeException("The given two arrays should have the same length")
+    }
+    val leftArrayType = left.dataType.asInstanceOf[ArrayType]
+    if (leftArrayType.containsNull) {
+      var i = 0
+      while (i < keyArrayData.numElements) {
+        if (keyArrayData.isNullAt(i)) {
+          throw new RuntimeException("Cannot use null as map key!")
+        }
+        i += 1
+      }
+    }
+    new ArrayBasedMapData(keyArrayData.copy(), valueArrayData.copy())
   }
 
   override def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode = {
     nullSafeCodeGen(ctx, ev, (keyArrayData, valueArrayData) => {
-      val builderTerm = ctx.addReferenceObj("mapBuilder", mapBuilder)
-      s"${ev.value} = $builderTerm.from($keyArrayData.copy(), $valueArrayData.copy());"
+      val arrayBasedMapData = classOf[ArrayBasedMapData].getName
+      val leftArrayType = left.dataType.asInstanceOf[ArrayType]
+      val keyArrayElemNullCheck = if (!leftArrayType.containsNull) "" else {
+        val i = ctx.freshName("i")
+        s"""
+           |for (int $i = 0; $i < $keyArrayData.numElements(); $i++) {
+           |  if ($keyArrayData.isNullAt($i)) {
+           |    throw new RuntimeException("Cannot use null as map key!");
+           |  }
+           |}
+         """.stripMargin
+      }
+      s"""
+         |if ($keyArrayData.numElements() != $valueArrayData.numElements()) {
+         |  throw new RuntimeException("The given two arrays should have the same length");
+         |}
+         |$keyArrayElemNullCheck
+         |${ev.value} = new $arrayBasedMapData($keyArrayData.copy(), $valueArrayData.copy());
+       """.stripMargin
     })
   }
 
@@ -451,25 +478,28 @@ case class StringToMap(text: Expression, pairDelim: Expression, keyValueDelim: E
     }
   }
 
-  private lazy val mapBuilder = new ArrayBasedMapBuilder(StringType, StringType)
-
   override def nullSafeEval(
       inputString: Any,
       stringDelimiter: Any,
       keyValueDelimiter: Any): Any = {
     val keyValues =
       inputString.asInstanceOf[UTF8String].split(stringDelimiter.asInstanceOf[UTF8String], -1)
-    val keyValueDelimiterUTF8String = keyValueDelimiter.asInstanceOf[UTF8String]
 
-    var i = 0
-    while (i < keyValues.length) {
-      val keyValueArray = keyValues(i).split(keyValueDelimiterUTF8String, 2)
-      val key = keyValueArray(0)
-      val value = if (keyValueArray.length < 2) null else keyValueArray(1)
-      mapBuilder.put(key, value)
-      i += 1
+    val iterator = new Iterator[(UTF8String, UTF8String)] {
+      var index = 0
+      val keyValueDelimiterUTF8String = keyValueDelimiter.asInstanceOf[UTF8String]
+
+      override def hasNext: Boolean = {
+        keyValues.length > index
+      }
+
+      override def next(): (UTF8String, UTF8String) = {
+        val keyValueArray = keyValues(index).split(keyValueDelimiterUTF8String, 2)
+        index += 1
+        (keyValueArray(0), if (keyValueArray.length < 2) null else keyValueArray(1))
+      }
     }
-    mapBuilder.build()
+    ArrayBasedMapData(iterator, keyValues.size, identity, identity)
   }
 
   override def prettyName: String = "str_to_map"

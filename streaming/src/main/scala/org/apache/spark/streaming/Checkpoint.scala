@@ -27,7 +27,6 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.{SparkConf, SparkException}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.UI._
 import org.apache.spark.io.CompressionCodec
 import org.apache.spark.streaming.scheduler.JobGenerator
 import org.apache.spark.util.Utils
@@ -62,7 +61,7 @@ class Checkpoint(ssc: StreamingContext, val checkpointTime: Time)
       "spark.yarn.principal",
       "spark.kerberos.keytab",
       "spark.kerberos.principal",
-      UI_FILTERS.key,
+      "spark.ui.filters",
       "spark.mesos.driver.frameworkId")
 
     val newSparkConf = new SparkConf(loadDefaults = false).setAll(sparkConfPairs)
@@ -218,7 +217,7 @@ class CheckpointWriter(
         latestCheckpointTime = checkpointTime
       }
       var attempts = 0
-      val startTimeNs = System.nanoTime()
+      val startTime = System.currentTimeMillis()
       val tempFile = new Path(checkpointDir, "temp")
       // We will do checkpoint when generating a batch and completing a batch. When the processing
       // time of a batch is greater than the batch interval, checkpointing for completing an old
@@ -272,9 +271,9 @@ class CheckpointWriter(
           }
 
           // All done, print success
+          val finishTime = System.currentTimeMillis()
           logInfo(s"Checkpoint for time $checkpointTime saved to file '$checkpointFile'" +
-            s", took ${bytes.length} bytes and " +
-            s"${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNs)} ms")
+            s", took ${bytes.length} bytes and ${finishTime - startTime} ms")
           jobGenerator.onCheckpointCompletion(checkpointTime, clearCheckpointDataLater)
           return
         } catch {
@@ -304,13 +303,14 @@ class CheckpointWriter(
     if (stopped) return
 
     executor.shutdown()
-    val startTimeNs = System.nanoTime()
+    val startTime = System.currentTimeMillis()
     val terminated = executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)
     if (!terminated) {
       executor.shutdownNow()
     }
+    val endTime = System.currentTimeMillis()
     logInfo(s"CheckpointWriter executor terminated? $terminated," +
-      s" waited for ${TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNs)} ms.")
+      s" waited for ${endTime - startTime} ms.")
     stopped = true
   }
 }

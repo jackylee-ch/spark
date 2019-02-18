@@ -25,7 +25,8 @@ import org.apache.spark.util.AccumulatorV2
 
 class ExternalClusterManagerSuite extends SparkFunSuite with LocalSparkContext {
   test("launch of backend and scheduler") {
-    val conf = new SparkConf().setMaster("myclusterManager").setAppName("testcm")
+    val conf = new SparkConf().setMaster("myclusterManager").
+        setAppName("testcm").set("spark.driver.allowMultipleContexts", "true")
     sc = new SparkContext(conf)
     // check if the scheduler components are created and initialized
     sc.schedulerBackend match {

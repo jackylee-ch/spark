@@ -43,10 +43,7 @@
       "writeTime" : 4016617,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 38,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 5,
   "index" : 5,
@@ -92,10 +89,7 @@
       "writeTime" : 3675510,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 33,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 1,
   "index" : 1,
@@ -141,10 +135,7 @@
       "writeTime" : 3934399,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 40,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 7,
   "index" : 7,
@@ -190,10 +181,7 @@
       "writeTime" : 2579051,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 43,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 4,
   "index" : 4,
@@ -239,10 +227,7 @@
       "writeTime" : 83022,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 38,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 3,
   "index" : 3,
@@ -288,10 +273,7 @@
       "writeTime" : 1311694,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 41,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 0,
   "index" : 0,
@@ -337,10 +319,7 @@
       "writeTime" : 3842811,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 53,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 2,
   "index" : 2,
@@ -386,10 +365,7 @@
       "writeTime" : 89885,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 37,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 22,
   "index" : 22,
@@ -435,10 +411,7 @@
       "writeTime" : 143427,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 3,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 18,
   "index" : 18,
@@ -484,10 +457,7 @@
       "writeTime" : 100836,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 3,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 17,
   "index" : 17,
@@ -533,10 +503,7 @@
       "writeTime" : 99944,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 20,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 21,
   "index" : 21,
@@ -582,10 +549,7 @@
       "writeTime" : 100270,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 3,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 19,
   "index" : 19,
@@ -631,10 +595,7 @@
       "writeTime" : 95788,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 5,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 16,
   "index" : 16,
@@ -680,10 +641,7 @@
       "writeTime" : 108320,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 4,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 9,
   "index" : 9,
@@ -729,10 +687,7 @@
       "writeTime" : 101664,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 8,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 20,
   "index" : 20,
@@ -778,10 +733,7 @@
       "writeTime" : 97716,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 4,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 14,
   "index" : 14,
@@ -827,10 +779,7 @@
       "writeTime" : 95646,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 5,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 8,
   "index" : 8,
@@ -876,10 +825,7 @@
       "writeTime" : 121551,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 5,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 12,
   "index" : 12,
@@ -925,10 +871,7 @@
       "writeTime" : 102476,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 7,
-  "gettingResultTime" : 0
+  }
 }, {
   "taskId" : 15,
   "index" : 15,
@@ -974,8 +917,5 @@
       "writeTime" : 602780,
       "recordsWritten" : 10
     }
-  },
-  "executorLogs" : { },
-  "schedulerDelay" : 4,
-  "gettingResultTime" : 0
+  }
 } ]

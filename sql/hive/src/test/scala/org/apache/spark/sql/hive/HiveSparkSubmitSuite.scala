@@ -26,7 +26,6 @@ import org.scalatest.{BeforeAndAfterEach, Matchers}
 
 import org.apache.spark._
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.UI.UI_ENABLED
 import org.apache.spark.sql.{QueryTest, Row, SparkSession}
 import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
 import org.apache.spark.sql.catalyst.catalog._
@@ -34,13 +33,11 @@ import org.apache.spark.sql.execution.command.DDLUtils
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.hive.test.{TestHive, TestHiveContext}
 import org.apache.spark.sql.types.{DecimalType, StructType}
-import org.apache.spark.tags.ExtendedHiveTest
 import org.apache.spark.util.{ResetSystemProperties, Utils}
 
 /**
  * This suite tests spark-submit with applications using HiveContext.
  */
-@ExtendedHiveTest
 class HiveSparkSubmitSuite
   extends SparkSubmitTestUtils
   with Matchers
@@ -48,6 +45,8 @@ class HiveSparkSubmitSuite
   with ResetSystemProperties {
 
   override protected val enableAutoThreadAudit = false
+
+  // TODO: rewrite these or mark them as slow tests to be run sparingly
 
   override def beforeEach() {
     super.beforeEach()
@@ -336,7 +335,7 @@ object SetMetastoreURLTest extends Logging {
     val sparkConf = new SparkConf(loadDefaults = true)
     val builder = SparkSession.builder()
       .config(sparkConf)
-      .config(UI_ENABLED.key, "false")
+      .config("spark.ui.enabled", "false")
       .config("spark.sql.hive.metastore.version", "0.13.1")
       // The issue described in SPARK-16901 only appear when
       // spark.sql.hive.metastore.jars is not set to builtin.
@@ -371,7 +370,7 @@ object SetWarehouseLocationTest extends Logging {
   def main(args: Array[String]): Unit = {
     TestUtils.configTestLog4j("INFO")
 
-    val sparkConf = new SparkConf(loadDefaults = true).set(UI_ENABLED, false)
+    val sparkConf = new SparkConf(loadDefaults = true).set("spark.ui.enabled", "false")
     val providedExpectedWarehouseLocation =
       sparkConf.getOption("spark.sql.test.expectedWarehouseDir")
 
@@ -450,7 +449,7 @@ object TemporaryHiveUDFTest extends Logging {
   def main(args: Array[String]) {
     TestUtils.configTestLog4j("INFO")
     val conf = new SparkConf()
-    conf.set(UI_ENABLED, false)
+    conf.set("spark.ui.enabled", "false")
     val sc = new SparkContext(conf)
     val hiveContext = new TestHiveContext(sc)
 
@@ -488,7 +487,7 @@ object PermanentHiveUDFTest1 extends Logging {
   def main(args: Array[String]) {
     TestUtils.configTestLog4j("INFO")
     val conf = new SparkConf()
-    conf.set(UI_ENABLED, false)
+    conf.set("spark.ui.enabled", "false")
     val sc = new SparkContext(conf)
     val hiveContext = new TestHiveContext(sc)
 
@@ -526,7 +525,7 @@ object PermanentHiveUDFTest2 extends Logging {
   def main(args: Array[String]) {
     TestUtils.configTestLog4j("INFO")
     val conf = new SparkConf()
-    conf.set(UI_ENABLED, false)
+    conf.set("spark.ui.enabled", "false")
     val sc = new SparkContext(conf)
     val hiveContext = new TestHiveContext(sc)
     // Load a Hive UDF from the jar.
@@ -562,7 +561,7 @@ object SparkSubmitClassLoaderTest extends Logging {
     TestUtils.configTestLog4j("INFO")
     val conf = new SparkConf()
     val hiveWarehouseLocation = Utils.createTempDir()
-    conf.set(UI_ENABLED, false)
+    conf.set("spark.ui.enabled", "false")
     conf.set("spark.sql.warehouse.dir", hiveWarehouseLocation.toString)
     val sc = new SparkContext(conf)
     val hiveContext = new TestHiveContext(sc)
@@ -655,7 +654,7 @@ object SparkSQLConfTest extends Logging {
       // For this simple test, we do not really clone this object.
       override def clone: SparkConf = this
     }
-    conf.set(UI_ENABLED, false)
+    conf.set("spark.ui.enabled", "false")
     val sc = new SparkContext(conf)
     val hiveContext = new TestHiveContext(sc)
     // Run a simple command to make sure all lazy vals in hiveContext get instantiated.
@@ -677,7 +676,7 @@ object SPARK_9757 extends QueryTest {
       new SparkConf()
         .set("spark.sql.hive.metastore.version", "0.13.1")
         .set("spark.sql.hive.metastore.jars", "maven")
-        .set(UI_ENABLED, false)
+        .set("spark.ui.enabled", "false")
         .set("spark.sql.warehouse.dir", hiveWarehouseLocation.toString))
 
     val hiveContext = new TestHiveContext(sparkContext)
@@ -723,7 +722,7 @@ object SPARK_11009 extends QueryTest {
 
     val sparkContext = new SparkContext(
       new SparkConf()
-        .set(UI_ENABLED, false)
+        .set("spark.ui.enabled", "false")
         .set("spark.sql.shuffle.partitions", "100"))
 
     val hiveContext = new TestHiveContext(sparkContext)
@@ -754,7 +753,7 @@ object SPARK_14244 extends QueryTest {
 
     val sparkContext = new SparkContext(
       new SparkConf()
-        .set(UI_ENABLED, false)
+        .set("spark.ui.enabled", "false")
         .set("spark.sql.shuffle.partitions", "100"))
 
     val hiveContext = new TestHiveContext(sparkContext)
@@ -775,7 +774,7 @@ object SPARK_14244 extends QueryTest {
 object SPARK_18360 {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
-      .config(UI_ENABLED.key, "false")
+      .config("spark.ui.enabled", "false")
       .enableHiveSupport().getOrCreate()
 
     val defaultDbLocation = spark.catalog.getDatabase("default").locationUri

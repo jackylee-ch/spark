@@ -28,10 +28,9 @@ import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.deploy.history.config.HISTORY_SERVER_UI_PORT
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
-import org.apache.spark.internal.config.History
-import org.apache.spark.internal.config.UI._
 import org.apache.spark.status.api.v1.{ApiRootResource, ApplicationInfo, UIRoot}
 import org.apache.spark.ui.{SparkUI, UIUtils, WebUI}
 import org.apache.spark.ui.JettyUtils._
@@ -57,7 +56,7 @@ class HistoryServer(
   with Logging with UIRoot with ApplicationCacheOperations {
 
   // How many applications to retain
-  private val retainedApplications = conf.get(History.RETAINED_APPLICATIONS)
+  private val retainedApplications = conf.getInt("spark.history.retainedApplications", 50)
 
   // How many applications the summary ui displays
   private[history] val maxApplications = conf.get(HISTORY_UI_MAX_APPS);
@@ -151,15 +150,17 @@ class HistoryServer(
       ui: SparkUI,
       completed: Boolean) {
     assert(serverInfo.isDefined, "HistoryServer must be bound before attaching SparkUIs")
-    ui.getHandlers.foreach { handler =>
-      serverInfo.get.addHandler(handler, ui.securityManager)
+    handlers.synchronized {
+      ui.getHandlers.foreach(attachHandler)
     }
   }
 
   /** Detach a reconstructed UI from this server. Only valid after bind(). */
   override def detachSparkUI(appId: String, attemptId: Option[String], ui: SparkUI): Unit = {
     assert(serverInfo.isDefined, "HistoryServer must be bound before detaching SparkUIs")
-    ui.getHandlers.foreach(detachHandler)
+    handlers.synchronized {
+      ui.getHandlers.foreach(detachHandler)
+    }
     provider.onUIDetached(appId, attemptId, ui)
   }
 
@@ -272,14 +273,14 @@ object HistoryServer extends Logging {
     initSecurity()
     val securityManager = createSecurityManager(conf)
 
-    val providerName = conf.get(History.PROVIDER)
+    val providerName = conf.getOption("spark.history.provider")
       .getOrElse(classOf[FsHistoryProvider].getName())
     val provider = Utils.classForName(providerName)
       .getConstructor(classOf[SparkConf])
       .newInstance(conf)
       .asInstanceOf[ApplicationHistoryProvider]
 
-    val port = conf.get(History.HISTORY_SERVER_UI_PORT)
+    val port = conf.get(HISTORY_SERVER_UI_PORT)
 
     val server = new HistoryServer(conf, provider, securityManager, port)
     server.bind()
@@ -303,10 +304,11 @@ object HistoryServer extends Logging {
       config.set(SecurityManager.SPARK_AUTH_CONF, "false")
     }
 
-    if (config.get(ACLS_ENABLE)) {
-      logInfo(s"${ACLS_ENABLE.key} is configured, " +
-        s"clearing it and only using ${History.HISTORY_SERVER_UI_ACLS_ENABLE.key}")
-      config.set(ACLS_ENABLE, false)
+    if (config.getBoolean("spark.acls.enable", config.getBoolean("spark.ui.acls.enable", false))) {
+      logInfo("Either spark.acls.enable or spark.ui.acls.enable is configured, clearing it and " +
+        "only using spark.history.ui.acl.enable")
+      config.set("spark.acls.enable", "false")
+      config.set("spark.ui.acls.enable", "false")
     }
 
     new SecurityManager(config)
@@ -317,12 +319,10 @@ object HistoryServer extends Logging {
     // from a keytab file so that we can access HDFS beyond the kerberos ticket expiration.
     // As long as it is using Hadoop rpc (hdfs://), a relogin will automatically
     // occur from the keytab.
-    if (conf.get(History.KERBEROS_ENABLED)) {
+    if (conf.getBoolean("spark.history.kerberos.enabled", false)) {
       // if you have enabled kerberos the following 2 params must be set
-      val principalName = conf.get(History.KERBEROS_PRINCIPAL)
-        .getOrElse(throw new NoSuchElementException(History.KERBEROS_PRINCIPAL.key))
-      val keytabFilename = conf.get(History.KERBEROS_KEYTAB)
-        .getOrElse(throw new NoSuchElementException(History.KERBEROS_KEYTAB.key))
+      val principalName = conf.get("spark.history.kerberos.principal")
+      val keytabFilename = conf.get("spark.history.kerberos.keytab")
       SparkHadoopUtil.get.loginUserFromKeytab(principalName, keytabFilename)
     }
   }

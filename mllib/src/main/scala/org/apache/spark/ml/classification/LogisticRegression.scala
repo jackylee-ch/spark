@@ -503,9 +503,8 @@ class LogisticRegression @Since("1.2.0") (
 
     instr.logPipelineStage(this)
     instr.logDataset(dataset)
-    instr.logParams(this, labelCol, weightCol, featuresCol, predictionCol, rawPredictionCol,
-      probabilityCol, regParam, elasticNetParam, standardization, threshold, maxIter, tol,
-      fitIntercept)
+    instr.logParams(this, regParam, elasticNetParam, standardization, threshold,
+      maxIter, tol, fitIntercept)
 
     val (summarizer, labelSummarizer) = {
       val seqOp = (c: (MultivariateOnlineSummarizer, MultiClassSummarizer),
@@ -815,7 +814,7 @@ class LogisticRegression @Since("1.2.0") (
           state = states.next()
           arrayBuilder += state.adjustedValue
         }
-        bcFeaturesStd.destroy()
+        bcFeaturesStd.destroy(blocking = false)
 
         if (state == null) {
           val msg = s"${optimizer.getClass.getName} failed."
@@ -934,8 +933,8 @@ class LogisticRegressionModel private[spark] (
     @Since("2.1.0") val interceptVector: Vector,
     @Since("1.3.0") override val numClasses: Int,
     private val isMultinomial: Boolean)
-  extends ProbabilisticClassificationModel[Vector, LogisticRegressionModel] with MLWritable
-  with LogisticRegressionParams with HasTrainingSummary[LogisticRegressionTrainingSummary] {
+  extends ProbabilisticClassificationModel[Vector, LogisticRegressionModel]
+  with LogisticRegressionParams with MLWritable {
 
   require(coefficientMatrix.numRows == interceptVector.size, s"Dimension mismatch! Expected " +
     s"coefficientMatrix.numRows == interceptVector.size, but ${coefficientMatrix.numRows} != " +
@@ -1018,16 +1017,20 @@ class LogisticRegressionModel private[spark] (
   @Since("1.6.0")
   override val numFeatures: Int = coefficientMatrix.numCols
 
-  /**
-   * Gets summary of model on training set. An exception is thrown
-   * if `hasSummary` is false.
-   */
-  @Since("1.5.0")
-  override def summary: LogisticRegressionTrainingSummary = super.summary
+  private var trainingSummary: Option[LogisticRegressionTrainingSummary] = None
 
   /**
    * Gets summary of model on training set. An exception is thrown
-   * if `hasSummary` is false or it is a multiclass model.
+   * if `trainingSummary == None`.
+   */
+  @Since("1.5.0")
+  def summary: LogisticRegressionTrainingSummary = trainingSummary.getOrElse {
+    throw new SparkException("No training summary available for this LogisticRegressionModel")
+  }
+
+  /**
+   * Gets summary of model on training set. An exception is thrown
+   * if `trainingSummary == None` or it is a multiclass model.
    */
   @Since("2.3.0")
   def binarySummary: BinaryLogisticRegressionTrainingSummary = summary match {
@@ -1057,6 +1060,16 @@ class LogisticRegressionModel private[spark] (
     }
     (model, model.getProbabilityCol, model.getPredictionCol)
   }
+
+  private[classification]
+  def setSummary(summary: Option[LogisticRegressionTrainingSummary]): this.type = {
+    this.trainingSummary = summary
+    this
+  }
+
+  /** Indicates whether a training summary exists for this model instance. */
+  @Since("1.5.0")
+  def hasSummary: Boolean = trainingSummary.isDefined
 
   /**
    * Evaluates the model on a test dataset.

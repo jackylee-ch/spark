@@ -73,8 +73,7 @@ class StreamingQueryStatusAndProgressSuite extends StreamTest with Eventually {
         |    "inputRowsPerSecond" : 10.0
         |  } ],
         |  "sink" : {
-        |    "description" : "sink",
-        |    "numOutputRows" : -1
+        |    "description" : "sink"
         |  }
         |}
       """.stripMargin.trim)
@@ -106,8 +105,7 @@ class StreamingQueryStatusAndProgressSuite extends StreamTest with Eventually {
          |    "numInputRows" : 678
          |  } ],
          |  "sink" : {
-         |    "description" : "sink",
-         |    "numOutputRows" : -1
+         |    "description" : "sink"
          |  }
          |}
       """.stripMargin.trim)
@@ -252,7 +250,7 @@ object StreamingQueryStatusAndProgressSuite {
         processedRowsPerSecond = Double.PositiveInfinity  // should not be present in the json
       )
     ),
-    sink = SinkProgress("sink", None)
+    sink = new SinkProgress("sink")
   )
 
   val testProgress2 = new StreamingQueryProgress(
@@ -276,7 +274,7 @@ object StreamingQueryStatusAndProgressSuite {
         processedRowsPerSecond = Double.NegativeInfinity // should not be present in the json
       )
     ),
-    sink = SinkProgress("sink", None)
+    sink = new SinkProgress("sink")
   )
 
   val testStatus = new StreamingQueryStatus("active", true, false)

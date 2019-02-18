@@ -120,7 +120,7 @@ class NewHadoopRDD[K, V](
   }
 
   override def getPartitions: Array[Partition] = {
-    val inputFormat = inputFormatClass.getConstructor().newInstance()
+    val inputFormat = inputFormatClass.newInstance
     inputFormat match {
       case configurable: Configurable =>
         configurable.setConf(_conf)
@@ -183,7 +183,7 @@ class NewHadoopRDD[K, V](
         }
       }
 
-      private val format = inputFormatClass.getConstructor().newInstance()
+      private val format = inputFormatClass.newInstance
       format match {
         case configurable: Configurable =>
           configurable.setConf(conf)

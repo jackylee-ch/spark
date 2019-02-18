@@ -20,7 +20,7 @@ package org.apache.spark.sql.streaming.continuous
 import org.apache.spark.{SparkContext, SparkException}
 import org.apache.spark.scheduler.{SparkListener, SparkListenerTaskStart}
 import org.apache.spark.sql._
-import org.apache.spark.sql.execution.datasources.v2.ContinuousScanExec
+import org.apache.spark.sql.execution.datasources.v2.DataSourceV2ScanExec
 import org.apache.spark.sql.execution.streaming._
 import org.apache.spark.sql.execution.streaming.continuous._
 import org.apache.spark.sql.execution.streaming.sources.ContinuousMemoryStream
@@ -41,7 +41,7 @@ class ContinuousSuiteBase extends StreamTest {
       case s: ContinuousExecution =>
         assert(numTriggers >= 2, "must wait for at least 2 triggers to ensure query is initialized")
         val reader = s.lastExecution.executedPlan.collectFirst {
-          case ContinuousScanExec(_, _, r: RateStreamContinuousStream, _) => r
+          case DataSourceV2ScanExec(_, _, _, _, r: RateStreamContinuousReadSupport, _) => r
         }.get
 
         val deltaMs = numTriggers * 1000 + 300
@@ -241,10 +241,10 @@ class ContinuousStressSuite extends ContinuousSuiteBase {
     testStream(df, useV2Sink = true)(
       StartStream(longContinuousTrigger),
       AwaitEpoch(0),
-      Execute(waitForRateSourceTriggers(_, 10)),
+      Execute(waitForRateSourceTriggers(_, 201)),
       IncrementEpoch(),
       StopStream,
-      CheckAnswerRowsContains(scala.Range(0, 2500).map(Row(_)))
+      CheckAnswerRowsContains(scala.Range(0, 25000).map(Row(_)))
     )
   }
 
@@ -259,10 +259,10 @@ class ContinuousStressSuite extends ContinuousSuiteBase {
     testStream(df, useV2Sink = true)(
       StartStream(Trigger.Continuous(2012)),
       AwaitEpoch(0),
-      Execute(waitForRateSourceTriggers(_, 10)),
+      Execute(waitForRateSourceTriggers(_, 201)),
       IncrementEpoch(),
       StopStream,
-      CheckAnswerRowsContains(scala.Range(0, 2500).map(Row(_))))
+      CheckAnswerRowsContains(scala.Range(0, 25000).map(Row(_))))
   }
 
   test("restarts") {
@@ -274,27 +274,27 @@ class ContinuousStressSuite extends ContinuousSuiteBase {
       .select('value)
 
     testStream(df, useV2Sink = true)(
-      StartStream(Trigger.Continuous(1012)),
-      AwaitEpoch(2),
+      StartStream(Trigger.Continuous(2012)),
+      AwaitEpoch(10),
       StopStream,
-      StartStream(Trigger.Continuous(1012)),
-      AwaitEpoch(4),
+      StartStream(Trigger.Continuous(2012)),
+      AwaitEpoch(20),
       StopStream,
-      StartStream(Trigger.Continuous(1012)),
-      AwaitEpoch(5),
+      StartStream(Trigger.Continuous(2012)),
+      AwaitEpoch(21),
       StopStream,
-      StartStream(Trigger.Continuous(1012)),
-      AwaitEpoch(6),
+      StartStream(Trigger.Continuous(2012)),
+      AwaitEpoch(22),
       StopStream,
-      StartStream(Trigger.Continuous(1012)),
-      AwaitEpoch(8),
+      StartStream(Trigger.Continuous(2012)),
+      AwaitEpoch(25),
       StopStream,
-      StartStream(Trigger.Continuous(1012)),
+      StartStream(Trigger.Continuous(2012)),
       StopStream,
-      StartStream(Trigger.Continuous(1012)),
-      AwaitEpoch(15),
+      StartStream(Trigger.Continuous(2012)),
+      AwaitEpoch(50),
       StopStream,
-      CheckAnswerRowsContains(scala.Range(0, 2500).map(Row(_))))
+      CheckAnswerRowsContains(scala.Range(0, 25000).map(Row(_))))
   }
 }
 

@@ -24,13 +24,7 @@ import org.apache.spark.sql.catalyst.util.TypeUtils
 import org.apache.spark.sql.types._
 
 @ExpressionDescription(
-  usage = "_FUNC_(expr) - Returns the minimum value of `expr`.",
-  examples = """
-    Examples:
-      > SELECT _FUNC_(col) FROM VALUES (10), (-1), (20) AS tab(col);
-       -1
-  """,
-  since = "1.0.0")
+  usage = "_FUNC_(expr) - Returns the minimum value of `expr`.")
 case class Min(child: Expression) extends DeclarativeAggregate {
 
   override def children: Seq[Expression] = child :: Nil

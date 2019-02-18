@@ -24,8 +24,7 @@ import scala.collection.JavaConverters._
 import org.apache.mesos.Protos.{TaskState => MesosTaskState, _}
 import org.apache.mesos.Protos.Value.{Scalar, Type}
 import org.apache.mesos.SchedulerDriver
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.{eq => meq}
+import org.mockito.{ArgumentCaptor, Matchers}
 import org.mockito.Mockito._
 import org.scalatest.mockito.MockitoSugar
 
@@ -105,7 +104,7 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
     val response = scheduler.submitDriver(
       new MesosDriverDescription("d1", "jar", 1200, 1.5, true,
         command,
-        Map((config.EXECUTOR_HOME.key, "test"), ("spark.app.name", "test")),
+        Map(("spark.mesos.executor.home", "test"), ("spark.app.name", "test")),
         "s1",
         new Date()))
     assert(response.success)
@@ -134,7 +133,7 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
 
     when(
       driver.launchTasks(
-        meq(Collections.singleton(offer.getId)),
+        Matchers.eq(Collections.singleton(offer.getId)),
         capture.capture())
     ).thenReturn(Status.valueOf(1))
 
@@ -157,7 +156,7 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
     assert(mem.exists(_.getRole() == "*"))
 
     verify(driver, times(1)).launchTasks(
-      meq(Collections.singleton(offer.getId)),
+      Matchers.eq(Collections.singleton(offer.getId)),
       capture.capture()
     )
   }
@@ -209,9 +208,9 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
     val response = scheduler.submitDriver(
       new MesosDriverDescription("d1", "jar", mem, cpu, true,
         command,
-        Map(config.EXECUTOR_HOME.key -> "test",
+        Map("spark.mesos.executor.home" -> "test",
           "spark.app.name" -> "test",
-          config.DRIVER_ENV_PREFIX + "TEST_ENV" -> "TEST_VAL"),
+          "spark.mesos.driverEnv.TEST_ENV" -> "TEST_VAL"),
         "s1",
         new Date()))
     assert(response.success)
@@ -233,10 +232,10 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
     val response = scheduler.submitDriver(
       new MesosDriverDescription("d1", "jar", mem, cpu, true,
         command,
-        Map(config.EXECUTOR_HOME.key -> "test",
+        Map("spark.mesos.executor.home" -> "test",
           "spark.app.name" -> "test",
-          config.NETWORK_NAME.key -> "test-network-name",
-          config.NETWORK_LABELS.key -> "key1:val1,key2:val2"),
+          "spark.mesos.network.name" -> "test-network-name",
+          "spark.mesos.network.labels" -> "key1:val1,key2:val2"),
         "s1",
         new Date()))
 
@@ -253,54 +252,6 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
     assert(networkInfos.get(0).getLabels.getLabels(0).getValue == "val1")
     assert(networkInfos.get(0).getLabels.getLabels(1).getKey == "key2")
     assert(networkInfos.get(0).getLabels.getLabels(1).getValue == "val2")
-  }
-
-  test("supports setting fetcher cache") {
-    setScheduler(Map(config.ENABLE_FETCHER_CACHE.key -> "true"))
-
-    val mem = 1000
-    val cpu = 1
-
-    val response = scheduler.submitDriver(
-      new MesosDriverDescription("d1", "jar", mem, cpu, true,
-        command,
-        Map(config.EXECUTOR_HOME.key -> "test",
-          "spark.app.name" -> "test"),
-        "s1",
-        new Date()))
-
-    assert(response.success)
-
-    val offer = Utils.createOffer("o1", "s1", mem, cpu)
-    scheduler.resourceOffers(driver, List(offer).asJava)
-
-    val launchedTasks = Utils.verifyTaskLaunched(driver, "o1")
-    val uris = launchedTasks.head.getCommand.getUrisList
-    assert(uris.asScala.forall(_.getCache))
-  }
-
-  test("supports disabling fetcher cache") {
-    setScheduler(Map(config.ENABLE_FETCHER_CACHE.key -> "false"))
-
-    val mem = 1000
-    val cpu = 1
-
-    val response = scheduler.submitDriver(
-      new MesosDriverDescription("d1", "jar", mem, cpu, true,
-        command,
-        Map(config.EXECUTOR_HOME.key -> "test",
-          "spark.app.name" -> "test"),
-        "s1",
-        new Date()))
-
-    assert(response.success)
-
-    val offer = Utils.createOffer("o1", "s1", mem, cpu)
-    scheduler.resourceOffers(driver, List(offer).asJava)
-
-    val launchedTasks = Utils.verifyTaskLaunched(driver, "o1")
-    val uris = launchedTasks.head.getCommand.getUrisList
-    assert(uris.asScala.forall(!_.getCache))
   }
 
   test("accept/decline offers with driver constraints") {
@@ -321,7 +272,7 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
       val response = scheduler.submitDriver(
         new MesosDriverDescription("d1", "jar", mem, cpu, true,
           command,
-          Map(config.EXECUTOR_HOME.key -> "test",
+          Map("spark.mesos.executor.home" -> "test",
             "spark.app.name" -> "test",
             config.DRIVER_CONSTRAINTS.key -> driverConstraints),
           "s1",
@@ -359,9 +310,9 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
     val response = scheduler.submitDriver(
       new MesosDriverDescription("d1", "jar", mem, cpu, true,
         command,
-        Map(config.EXECUTOR_HOME.key -> "test",
+        Map("spark.mesos.executor.home" -> "test",
           "spark.app.name" -> "test",
-          config.DRIVER_LABELS.key -> "key:value"),
+          "spark.mesos.driver.labels" -> "key:value"),
         "s1",
         new Date()))
 
@@ -385,7 +336,7 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
 
     val response = scheduler.submitDriver(
       new MesosDriverDescription("d1", "jar", 100, 1, true, command,
-        Map((config.EXECUTOR_HOME.key, "test"), ("spark.app.name", "test")), "s1", new Date()))
+        Map(("spark.mesos.executor.home", "test"), ("spark.app.name", "test")), "s1", new Date()))
     assert(response.success)
     val slaveId = SlaveID.newBuilder().setValue("s1").build()
     val offer = Offer.newBuilder()
@@ -471,7 +422,7 @@ class MesosClusterSchedulerSuite extends SparkFunSuite with LocalSparkContext wi
       cpu,
       true,
       command,
-      Map(config.EXECUTOR_HOME.key -> "test",
+      Map("spark.mesos.executor.home" -> "test",
         "spark.app.name" -> "test") ++
         addlSparkConfVars,
       "s1",

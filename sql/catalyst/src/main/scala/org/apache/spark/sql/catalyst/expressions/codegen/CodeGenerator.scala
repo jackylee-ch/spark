@@ -910,13 +910,12 @@ class CodegenContext {
     val blocks = new ArrayBuffer[String]()
     val blockBuilder = new StringBuilder()
     var length = 0
-    val splitThreshold = SQLConf.get.methodSplitThreshold
     for (code <- expressions) {
       // We can't know how many bytecode will be generated, so use the length of source code
       // as metric. A method should not go beyond 8K, otherwise it will not be JITted, should
       // also not be too small, or it will have many function calls (for wide table), see the
       // results in BenchmarkWideTable.
-      if (length > splitThreshold) {
+      if (length > 1024) {
         blocks += blockBuilder.toString()
         blockBuilder.clear()
         length = 0
@@ -1305,7 +1304,7 @@ object CodeGenerator extends Logging {
         throw new CompileException(msg, e.getLocation)
     }
 
-    (evaluator.getClazz().getConstructor().newInstance().asInstanceOf[GeneratedClass], maxCodeSize)
+    (evaluator.getClazz().newInstance().asInstanceOf[GeneratedClass], maxCodeSize)
   }
 
   /**

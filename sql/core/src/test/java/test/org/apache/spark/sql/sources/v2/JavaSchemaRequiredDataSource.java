@@ -17,51 +17,39 @@
 
 package test.org.apache.spark.sql.sources.v2;
 
+import org.apache.spark.sql.sources.v2.BatchReadSupportProvider;
 import org.apache.spark.sql.sources.v2.DataSourceOptions;
-import org.apache.spark.sql.sources.v2.Table;
-import org.apache.spark.sql.sources.v2.TableProvider;
+import org.apache.spark.sql.sources.v2.DataSourceV2;
 import org.apache.spark.sql.sources.v2.reader.*;
 import org.apache.spark.sql.types.StructType;
 
-public class JavaSchemaRequiredDataSource implements TableProvider {
+public class JavaSchemaRequiredDataSource implements DataSourceV2, BatchReadSupportProvider {
 
-  class MyScanBuilder extends JavaSimpleScanBuilder {
+  class ReadSupport extends JavaSimpleReadSupport {
+    private final StructType schema;
 
-    private StructType schema;
-
-    MyScanBuilder(StructType schema) {
+    ReadSupport(StructType schema) {
       this.schema = schema;
     }
 
     @Override
-    public StructType readSchema() {
+    public StructType fullSchema() {
       return schema;
     }
 
     @Override
-    public InputPartition[] planInputPartitions() {
+    public InputPartition[] planInputPartitions(ScanConfig config) {
       return new InputPartition[0];
     }
   }
 
   @Override
-  public Table getTable(DataSourceOptions options, StructType schema) {
-    return new JavaSimpleBatchTable() {
-
-      @Override
-      public StructType schema() {
-        return schema;
-      }
-
-      @Override
-      public ScanBuilder newScanBuilder(DataSourceOptions options) {
-        return new MyScanBuilder(schema);
-      }
-    };
+  public BatchReadSupport createBatchReadSupport(DataSourceOptions options) {
+    throw new IllegalArgumentException("requires a user-supplied schema");
   }
 
   @Override
-  public Table getTable(DataSourceOptions options) {
-    throw new IllegalArgumentException("requires a user-supplied schema");
+  public BatchReadSupport createBatchReadSupport(StructType schema, DataSourceOptions options) {
+    return new ReadSupport(schema);
   }
 }

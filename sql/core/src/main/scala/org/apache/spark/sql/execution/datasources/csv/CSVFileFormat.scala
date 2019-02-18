@@ -26,8 +26,6 @@ import org.apache.hadoop.mapreduce._
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.{AnalysisException, SparkSession}
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.csv.{CSVHeaderChecker, CSVOptions, UnivocityGenerator, UnivocityParser}
-import org.apache.spark.sql.catalyst.expressions.ExprUtils
 import org.apache.spark.sql.catalyst.util.CompressionCodecs
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.sources._
@@ -111,7 +109,13 @@ class CSVFileFormat extends TextBasedFileFormat with DataSourceRegister {
       sparkSession.sessionState.conf.columnNameOfCorruptRecord)
 
     // Check a field requirement for corrupt records here to throw an exception in a driver side
-    ExprUtils.verifyColumnNameOfCorruptRecord(dataSchema, parsedOptions.columnNameOfCorruptRecord)
+    dataSchema.getFieldIndex(parsedOptions.columnNameOfCorruptRecord).foreach { corruptFieldIndex =>
+      val f = dataSchema(corruptFieldIndex)
+      if (f.dataType != StringType || !f.nullable) {
+        throw new AnalysisException(
+          "The field for corrupt records must be string type and nullable")
+      }
+    }
 
     if (requiredSchema.length == 1 &&
       requiredSchema.head.name == parsedOptions.columnNameOfCorruptRecord) {
@@ -126,6 +130,7 @@ class CSVFileFormat extends TextBasedFileFormat with DataSourceRegister {
           "df.filter($\"_corrupt_record\".isNotNull).count()."
       )
     }
+    val caseSensitive = sparkSession.sessionState.conf.caseSensitiveAnalysis
     val columnPruning = sparkSession.sessionState.conf.csvColumnPruning
 
     (file: PartitionedFile) => {
@@ -134,16 +139,14 @@ class CSVFileFormat extends TextBasedFileFormat with DataSourceRegister {
         StructType(dataSchema.filterNot(_.name == parsedOptions.columnNameOfCorruptRecord)),
         StructType(requiredSchema.filterNot(_.name == parsedOptions.columnNameOfCorruptRecord)),
         parsedOptions)
-      val schema = if (columnPruning) requiredSchema else dataSchema
-      val isStartOfFile = file.start == 0
-      val headerChecker = new CSVHeaderChecker(
-        schema, parsedOptions, source = s"CSV file: ${file.filePath}", isStartOfFile)
       CSVDataSource(parsedOptions).readFile(
         conf,
         file,
         parser,
-        headerChecker,
-        requiredSchema)
+        requiredSchema,
+        dataSchema,
+        caseSensitive,
+        columnPruning)
     }
   }
 
@@ -153,10 +156,10 @@ class CSVFileFormat extends TextBasedFileFormat with DataSourceRegister {
 
   override def equals(other: Any): Boolean = other.isInstanceOf[CSVFileFormat]
 
-  override def supportDataType(dataType: DataType): Boolean = dataType match {
+  override def supportDataType(dataType: DataType, isReadPath: Boolean): Boolean = dataType match {
     case _: AtomicType => true
 
-    case udt: UserDefinedType[_] => supportDataType(udt.sqlType)
+    case udt: UserDefinedType[_] => supportDataType(udt.sqlType, isReadPath)
 
     case _ => false
   }
@@ -169,25 +172,13 @@ private[csv] class CsvOutputWriter(
     context: TaskAttemptContext,
     params: CSVOptions) extends OutputWriter with Logging {
 
-  private var univocityGenerator: Option[UnivocityGenerator] = None
+  private val charset = Charset.forName(params.charset)
 
-  if (params.headerFlag) {
-    val gen = getGen()
-    gen.writeHeaders()
-  }
+  private val writer = CodecStreams.createOutputStreamWriter(context, new Path(path), charset)
 
-  private def getGen(): UnivocityGenerator = univocityGenerator.getOrElse {
-    val charset = Charset.forName(params.charset)
-    val os = CodecStreams.createOutputStreamWriter(context, new Path(path), charset)
-    val newGen = new UnivocityGenerator(dataSchema, os, params)
-    univocityGenerator = Some(newGen)
-    newGen
-  }
+  private val gen = new UnivocityGenerator(dataSchema, writer, params)
 
-  override def write(row: InternalRow): Unit = {
-    val gen = getGen()
-    gen.write(row)
-  }
+  override def write(row: InternalRow): Unit = gen.write(row)
 
-  override def close(): Unit = univocityGenerator.foreach(_.close())
+  override def close(): Unit = gen.close()
 }

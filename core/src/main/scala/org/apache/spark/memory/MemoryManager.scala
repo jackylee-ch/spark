@@ -41,8 +41,6 @@ private[spark] abstract class MemoryManager(
     onHeapStorageMemory: Long,
     onHeapExecutionMemory: Long) extends Logging {
 
-  require(onHeapExecutionMemory > 0, "onHeapExecutionMemory must be > 0")
-
   // -- Methods related to memory allocation policies and bookkeeping ------------------------------
 
   @GuardedBy("this")
@@ -59,7 +57,7 @@ private[spark] abstract class MemoryManager(
 
   protected[this] val maxOffHeapMemory = conf.get(MEMORY_OFFHEAP_SIZE)
   protected[this] val offHeapStorageMemory =
-    (maxOffHeapMemory * conf.get(MEMORY_STORAGE_FRACTION)).toLong
+    (maxOffHeapMemory * conf.getDouble("spark.memory.storageFraction", 0.5)).toLong
 
   offHeapExecutionMemoryPool.incrementPoolSize(maxOffHeapMemory - offHeapStorageMemory)
   offHeapStorageMemoryPool.incrementPoolSize(offHeapStorageMemory)

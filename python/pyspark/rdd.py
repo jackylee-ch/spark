@@ -25,6 +25,7 @@ import warnings
 import heapq
 import bisect
 import random
+import socket
 from subprocess import Popen, PIPE
 from tempfile import NamedTemporaryFile
 from threading import Thread
@@ -41,7 +42,8 @@ else:
 from pyspark.java_gateway import local_connect_and_auth
 from pyspark.serializers import NoOpSerializer, CartesianDeserializer, \
     BatchedSerializer, CloudPickleSerializer, PairDeserializer, \
-    PickleSerializer, pack_long, AutoBatchedSerializer
+    PickleSerializer, pack_long, AutoBatchedSerializer, write_with_length, \
+    UTF8Deserializer
 from pyspark.join import python_join, python_left_outer_join, \
     python_right_outer_join, python_full_outer_join, python_cogroup
 from pyspark.statcounter import StatCounter
@@ -51,7 +53,7 @@ from pyspark.resultiterable import ResultIterable
 from pyspark.shuffle import Aggregator, ExternalMerger, \
     get_used_memory, ExternalSorter, ExternalGroupBy
 from pyspark.traceback_utils import SCCallSiteSync
-from pyspark.util import fail_on_stopiteration
+from pyspark.util import fail_on_stopiteration, _exception_message
 
 
 __all__ = ["RDD"]
@@ -125,7 +127,7 @@ class BoundedFloat(float):
 def _parse_memory(s):
     """
     Parse a memory string in the format supported by Java (e.g. 1g, 200m) and
-    return the value in MiB
+    return the value in MB
 
     >>> _parse_memory("256m")
     256
@@ -244,17 +246,13 @@ class RDD(object):
         self._jrdd.persist(javaStorageLevel)
         return self
 
-    def unpersist(self, blocking=False):
+    def unpersist(self):
         """
         Mark the RDD as non-persistent, and remove all blocks for it from
         memory and disk.
-
-        .. versionchanged:: 3.0.0
-           Added optional argument `blocking` to specify whether to block until all
-           blocks are deleted.
         """
         self.is_cached = False
-        self._jrdd.unpersist(blocking)
+        self._jrdd.unpersist()
         return self
 
     def checkpoint(self):
@@ -2356,7 +2354,7 @@ class RDD(object):
         The algorithm used is based on streamlib's implementation of
         `"HyperLogLog in Practice: Algorithmic Engineering of a State
         of The Art Cardinality Estimation Algorithm", available here
-        <https://doi.org/10.1145/2452376.2452456>`_.
+        <http://dx.doi.org/10.1145/2452376.2452456>`_.
 
         :param relativeSD: Relative accuracy. Smaller values create
                            counters that require more space.
@@ -2513,7 +2511,7 @@ class PipelinedRDD(RDD):
         self._jrdd_deserializer = self.ctx.serializer
         self._bypass_serializer = False
         self.partitioner = prev.partitioner if self.preservesPartitioning else None
-        self.is_barrier = isFromBarrier or prev._is_barrier()
+        self.is_barrier = prev._is_barrier() or isFromBarrier
 
     def getNumPartitions(self):
         return self._prev_jrdd.partitions().size()

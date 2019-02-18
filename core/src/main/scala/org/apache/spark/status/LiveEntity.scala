@@ -61,11 +61,10 @@ private[spark] abstract class LiveEntity {
 private class LiveJob(
     val jobId: Int,
     name: String,
-    val submissionTime: Option[Date],
+    submissionTime: Option[Date],
     val stageIds: Seq[Int],
     jobGroup: Option[String],
-    numTasks: Int,
-    sqlExecutionId: Option[Long]) extends LiveEntity {
+    numTasks: Int) extends LiveEntity {
 
   var activeTasks = 0
   var completedTasks = 0
@@ -109,7 +108,7 @@ private class LiveJob(
       skippedStages.size,
       failedStages,
       killedSummary)
-    new JobDataWrapper(info, skippedStages, sqlExecutionId)
+    new JobDataWrapper(info, skippedStages)
   }
 
 }
@@ -258,7 +257,6 @@ private class LiveExecutor(val executorId: String, _addTime: Long) extends LiveE
   var blacklistedInStages: Set[Int] = TreeSet()
 
   var executorLogs = Map[String, String]()
-  var attributes = Map[String, String]()
 
   // Memory metrics. They may not be recorded (e.g. old event logs) so if totalOnHeap is not
   // initialized, the store will not contain this information.
@@ -307,8 +305,7 @@ private class LiveExecutor(val executorId: String, _addTime: Long) extends LiveE
       executorLogs,
       memoryMetrics,
       blacklistedInStages,
-      Some(peakExecutorMetrics).filter(_.isSet),
-      attributes)
+      Some(peakExecutorMetrics).filter(_.isSet))
     new ExecutorSummaryWrapper(info)
   }
 }
@@ -378,8 +375,6 @@ private class LiveStage extends LiveEntity {
   var metrics = createMetrics(default = 0L)
 
   val executorSummaries = new HashMap[String, LiveExecutorStageSummary]()
-
-  val activeTasksPerExecutor = new HashMap[String, Int]().withDefaultValue(0)
 
   var blackListedExecutors = new HashSet[String]()
 

@@ -614,7 +614,7 @@ class TestFileFormat extends TextBasedFileFormat {
       job: Job,
       options: Map[String, String],
       dataSchema: StructType): OutputWriterFactory = {
-    throw new UnsupportedOperationException("JUST FOR TESTING")
+    throw new NotImplementedError("JUST FOR TESTING")
   }
 
   override def buildReader(

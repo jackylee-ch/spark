@@ -47,13 +47,8 @@ import org.apache.spark.sql.types._
 @ExpressionDescription(
   usage = """
     _FUNC_(expr[, relativeSD]) - Returns the estimated cardinality by HyperLogLog++.
-      `relativeSD` defines the maximum estimation error allowed.""",
-  examples = """
-    Examples:
-      > SELECT _FUNC_(col1) FROM VALUES (1), (1), (2), (2), (3) tab(col1);
-       3
-  """,
-  since = "1.6.0")
+      `relativeSD` defines the maximum estimation error allowed.
+  """)
 case class HyperLogLogPlusPlus(
     child: Expression,
     relativeSD: Double = 0.05,

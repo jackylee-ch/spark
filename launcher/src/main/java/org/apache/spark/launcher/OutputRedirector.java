@@ -37,7 +37,6 @@ class OutputRedirector {
   private final ChildProcAppHandle callback;
 
   private volatile boolean active;
-  private volatile Throwable error;
 
   OutputRedirector(InputStream in, String loggerName, ThreadFactory tf) {
     this(in, loggerName, tf, null);
@@ -62,10 +61,6 @@ class OutputRedirector {
       while ((line = reader.readLine()) != null) {
         if (active) {
           sink.info(line.replaceFirst("\\s*$", ""));
-          if ((containsIgnoreCase(line, "Error") || containsIgnoreCase(line, "Exception")) &&
-              !line.contains("at ")) {
-            error = new RuntimeException(line);
-          }
         }
       }
     } catch (IOException e) {
@@ -90,24 +85,4 @@ class OutputRedirector {
     return thread.isAlive();
   }
 
-  Throwable getError() {
-    return error;
-  }
-
-  /**
-   * Copied from Apache Commons Lang {@code StringUtils#containsIgnoreCase(String, String)}
-   */
-  private static boolean containsIgnoreCase(String str, String searchStr) {
-    if (str == null || searchStr == null) {
-      return false;
-    }
-    int len = searchStr.length();
-    int max = str.length() - len;
-    for (int i = 0; i <= max; i++) {
-      if (str.regionMatches(true, i, searchStr, 0, len)) {
-        return true;
-      }
-    }
-    return false;
-  }
 }

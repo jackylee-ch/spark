@@ -63,10 +63,10 @@ public class ExecutorPluginSuite {
 
   @Test
   public void testPluginClassDoesNotExist() {
-    SparkConf conf = initializeSparkConf("nonexistent.plugin");
+    SparkConf conf = initializeSparkConf("nonexistant.plugin");
     try {
       sc = new JavaSparkContext(conf);
-      fail("No exception thrown for nonexistent plugin");
+      fail("No exception thrown for nonexistant plugin");
     } catch (Exception e) {
       // We cannot catch ClassNotFoundException directly because Java doesn't think it'll be thrown
       assertTrue(e.toString().startsWith("java.lang.ClassNotFoundException"));

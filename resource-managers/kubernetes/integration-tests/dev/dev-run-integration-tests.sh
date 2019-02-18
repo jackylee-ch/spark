@@ -26,15 +26,8 @@ IMAGE_TAG="N/A"
 SPARK_MASTER=
 NAMESPACE=
 SERVICE_ACCOUNT=
-CONTEXT=
 INCLUDE_TAGS="k8s"
 EXCLUDE_TAGS=
-MVN="$TEST_ROOT_DIR/build/mvn"
-
-SCALA_VERSION=$("$MVN" help:evaluate -Dexpression=scala.binary.version 2>/dev/null\
-    | grep -v "INFO"\
-    | grep -v "WARNING"\
-    | tail -n 1)
 
 # Parse arguments
 while (( "$#" )); do
@@ -65,10 +58,6 @@ while (( "$#" )); do
       ;;
     --service-account)
       SERVICE_ACCOUNT="$2"
-      shift
-      ;;
-    --context)
-      CONTEXT="$2"
       shift
       ;;
     --include-tags)
@@ -104,11 +93,6 @@ then
   properties=( ${properties[@]} -Dspark.kubernetes.test.serviceAccountName=$SERVICE_ACCOUNT )
 fi
 
-if [ -n $CONTEXT ];
-then
-  properties=( ${properties[@]} -Dspark.kubernetes.test.kubeConfigContext=$CONTEXT )
-fi
-
 if [ -n $SPARK_MASTER ];
 then
   properties=( ${properties[@]} -Dspark.kubernetes.test.master=$SPARK_MASTER )
@@ -119,4 +103,4 @@ then
   properties=( ${properties[@]} -Dtest.exclude.tags=$EXCLUDE_TAGS )
 fi
 
-$TEST_ROOT_DIR/build/mvn integration-test -f $TEST_ROOT_DIR/pom.xml -pl resource-managers/kubernetes/integration-tests -am -Pscala-$SCALA_VERSION -Pkubernetes -Pkubernetes-integration-tests ${properties[@]}
+$TEST_ROOT_DIR/build/mvn integration-test -f $TEST_ROOT_DIR/pom.xml -pl resource-managers/kubernetes/integration-tests -am -Pkubernetes -Phadoop-2.7 ${properties[@]}

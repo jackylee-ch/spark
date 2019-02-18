@@ -30,13 +30,12 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.mesos.{Protos, Scheduler, SchedulerDriver}
 import org.apache.mesos.Protos._
 import org.apache.mesos.Protos.Value.Scalar
-import org.mockito.ArgumentCaptor
-import org.mockito.ArgumentMatchers.{any, anyLong, eq => meq}
+import org.mockito.{ArgumentCaptor, Matchers}
+import org.mockito.Matchers._
 import org.mockito.Mockito._
 import org.scalatest.mockito.MockitoSugar
 
 import org.apache.spark.{LocalSparkContext, SparkConf, SparkContext, SparkFunSuite}
-import org.apache.spark.deploy.mesos.config._
 import org.apache.spark.executor.MesosExecutorBackend
 import org.apache.spark.scheduler.{LiveListenerBus, SparkListenerExecutorAdded,
   TaskDescription, TaskSchedulerImpl, WorkerOffer}
@@ -47,7 +46,7 @@ class MesosFineGrainedSchedulerBackendSuite
 
   test("weburi is set in created scheduler driver") {
     val conf = new SparkConf
-    conf.set(DRIVER_WEBUI_URL, "http://webui")
+    conf.set("spark.mesos.driver.webui.url", "http://webui")
     conf.set("spark.app.name", "name1")
 
     val sc = mock[SparkContext]
@@ -81,14 +80,13 @@ class MesosFineGrainedSchedulerBackendSuite
   }
 
   test("Use configured mesosExecutor.cores for ExecutorInfo") {
-    val mesosExecutorCores = 3.0
+    val mesosExecutorCores = 3
     val conf = new SparkConf
-    conf.set(EXECUTOR_CORES, mesosExecutorCores)
+    conf.set("spark.mesos.mesosExecutor.cores", mesosExecutorCores.toString)
 
     val listenerBus = mock[LiveListenerBus]
     listenerBus.post(
-      SparkListenerExecutorAdded(anyLong, "s1",
-        new ExecutorInfo("host1", 2, Map.empty, Map.empty)))
+      SparkListenerExecutorAdded(anyLong, "s1", new ExecutorInfo("host1", 2, Map.empty)))
 
     val sc = mock[SparkContext]
     when(sc.getSparkHome()).thenReturn(Option("/spark-home"))
@@ -115,12 +113,11 @@ class MesosFineGrainedSchedulerBackendSuite
 
   test("check spark-class location correctly") {
     val conf = new SparkConf
-    conf.set(EXECUTOR_HOME, "/mesos-home")
+    conf.set("spark.mesos.executor.home", "/mesos-home")
 
     val listenerBus = mock[LiveListenerBus]
     listenerBus.post(
-      SparkListenerExecutorAdded(anyLong, "s1",
-        new ExecutorInfo("host1", 2, Map.empty, Map.empty)))
+      SparkListenerExecutorAdded(anyLong, "s1", new ExecutorInfo("host1", 2, Map.empty)))
 
     val sc = mock[SparkContext]
     when(sc.getSparkHome()).thenReturn(Option("/spark-home"))
@@ -143,7 +140,7 @@ class MesosFineGrainedSchedulerBackendSuite
       s" /mesos-home/bin/spark-class ${classOf[MesosExecutorBackend].getName}")
 
     // uri exists.
-    conf.set(EXECUTOR_URI, "hdfs:///test-app-1.0.0.tgz")
+    conf.set("spark.executor.uri", "hdfs:///test-app-1.0.0.tgz")
     val (executorInfo1, _) = mesosSchedulerBackend.createExecutorInfo(resources, "test-id")
     assert(executorInfo1.getCommand.getValue ===
       s"cd test-app-1*;  ./bin/spark-class ${classOf[MesosExecutorBackend].getName}")
@@ -153,15 +150,14 @@ class MesosFineGrainedSchedulerBackendSuite
     val taskScheduler = mock[TaskSchedulerImpl]
 
     val conf = new SparkConf()
-      .set(EXECUTOR_DOCKER_IMAGE, "spark/mock")
-      .set(EXECUTOR_DOCKER_FORCE_PULL_IMAGE, true)
-      .set(EXECUTOR_DOCKER_VOLUMES, Seq("/a", "/b:/b", "/c:/c:rw", "/d:ro", "/e:/e:ro"))
-      .set(EXECUTOR_DOCKER_PORT_MAPS, Seq("80:8080", "53:53:tcp"))
+      .set("spark.mesos.executor.docker.image", "spark/mock")
+      .set("spark.mesos.executor.docker.forcePullImage", "true")
+      .set("spark.mesos.executor.docker.volumes", "/a,/b:/b,/c:/c:rw,/d:ro,/e:/e:ro")
+      .set("spark.mesos.executor.docker.portmaps", "80:8080,53:53:tcp")
 
     val listenerBus = mock[LiveListenerBus]
     listenerBus.post(
-      SparkListenerExecutorAdded(anyLong, "s1",
-        new ExecutorInfo("host1", 2, Map.empty, Map.empty)))
+      SparkListenerExecutorAdded(anyLong, "s1", new ExecutorInfo("host1", 2, Map.empty)))
 
     val sc = mock[SparkContext]
     when(sc.executorMemory).thenReturn(100)
@@ -221,8 +217,7 @@ class MesosFineGrainedSchedulerBackendSuite
 
     val listenerBus = mock[LiveListenerBus]
     listenerBus.post(
-      SparkListenerExecutorAdded(anyLong, "s1",
-        new ExecutorInfo("host1", 2, Map.empty, Map.empty)))
+      SparkListenerExecutorAdded(anyLong, "s1", new ExecutorInfo("host1", 2, Map.empty)))
 
     val sc = mock[SparkContext]
     when(sc.executorMemory).thenReturn(100)
@@ -269,7 +264,7 @@ class MesosFineGrainedSchedulerBackendSuite
     val capture = ArgumentCaptor.forClass(classOf[Collection[TaskInfo]])
     when(
       driver.launchTasks(
-        meq(Collections.singleton(mesosOffers.get(0).getId)),
+        Matchers.eq(Collections.singleton(mesosOffers.get(0).getId)),
         capture.capture(),
         any(classOf[Filters])
       )
@@ -280,7 +275,7 @@ class MesosFineGrainedSchedulerBackendSuite
     backend.resourceOffers(driver, mesosOffers)
 
     verify(driver, times(1)).launchTasks(
-      meq(Collections.singleton(mesosOffers.get(0).getId)),
+      Matchers.eq(Collections.singleton(mesosOffers.get(0).getId)),
       capture.capture(),
       any(classOf[Filters])
     )
@@ -313,8 +308,7 @@ class MesosFineGrainedSchedulerBackendSuite
 
     val listenerBus = mock[LiveListenerBus]
     listenerBus.post(
-      SparkListenerExecutorAdded(anyLong, "s1",
-        new ExecutorInfo("host1", 2, Map.empty, Map.empty)))
+      SparkListenerExecutorAdded(anyLong, "s1", new ExecutorInfo("host1", 2, Map.empty)))
 
     val sc = mock[SparkContext]
     when(sc.executorMemory).thenReturn(100)
@@ -379,7 +373,7 @@ class MesosFineGrainedSchedulerBackendSuite
     val capture = ArgumentCaptor.forClass(classOf[Collection[TaskInfo]])
     when(
       driver.launchTasks(
-        meq(Collections.singleton(mesosOffers.get(0).getId)),
+        Matchers.eq(Collections.singleton(mesosOffers.get(0).getId)),
         capture.capture(),
         any(classOf[Filters])
       )
@@ -388,7 +382,7 @@ class MesosFineGrainedSchedulerBackendSuite
     backend.resourceOffers(driver, mesosOffers)
 
     verify(driver, times(1)).launchTasks(
-      meq(Collections.singleton(mesosOffers.get(0).getId)),
+      Matchers.eq(Collections.singleton(mesosOffers.get(0).getId)),
       capture.capture(),
       any(classOf[Filters])
     )

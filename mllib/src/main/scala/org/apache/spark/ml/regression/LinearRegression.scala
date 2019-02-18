@@ -531,8 +531,8 @@ class LinearRegression @Since("1.3.0") (@Since("1.3.0") override val uid: String
         throw new SparkException(msg)
       }
 
-      bcFeaturesMean.destroy()
-      bcFeaturesStd.destroy()
+      bcFeaturesMean.destroy(blocking = false)
+      bcFeaturesStd.destroy(blocking = false)
 
       val parameters = state.x.toArray.clone()
 
@@ -647,20 +647,33 @@ class LinearRegressionModel private[ml] (
     @Since("1.3.0") val intercept: Double,
     @Since("2.3.0") val scale: Double)
   extends RegressionModel[Vector, LinearRegressionModel]
-  with LinearRegressionParams with GeneralMLWritable
-  with HasTrainingSummary[LinearRegressionTrainingSummary] {
+  with LinearRegressionParams with GeneralMLWritable {
 
   private[ml] def this(uid: String, coefficients: Vector, intercept: Double) =
     this(uid, coefficients, intercept, 1.0)
+
+  private var trainingSummary: Option[LinearRegressionTrainingSummary] = None
 
   override val numFeatures: Int = coefficients.size
 
   /**
    * Gets summary (e.g. residuals, mse, r-squared ) of model on training set. An exception is
-   * thrown if `hasSummary` is false.
+   * thrown if `trainingSummary == None`.
    */
   @Since("1.5.0")
-  override def summary: LinearRegressionTrainingSummary = super.summary
+  def summary: LinearRegressionTrainingSummary = trainingSummary.getOrElse {
+    throw new SparkException("No training summary available for this LinearRegressionModel")
+  }
+
+  private[regression]
+  def setSummary(summary: Option[LinearRegressionTrainingSummary]): this.type = {
+    this.trainingSummary = summary
+    this
+  }
+
+  /** Indicates whether a training summary exists for this model instance. */
+  @Since("1.5.0")
+  def hasSummary: Boolean = trainingSummary.isDefined
 
   /**
    * Evaluates the model on a test dataset.

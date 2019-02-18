@@ -25,7 +25,6 @@ import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.optimizer.BooleanSimplification
 import org.apache.spark.sql.catalyst.plans._
 import org.apache.spark.sql.catalyst.plans.logical._
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 
 /**
@@ -135,6 +134,11 @@ trait CheckAnalysis extends PredicateHelper {
             failAnalysis("An offset window function can only be evaluated in an ordered " +
               s"row-based window frame with a single offset: $w")
 
+          case _ @ WindowExpression(_: PythonUDF,
+            WindowSpecDefinition(_, _, frame: SpecifiedWindowFrame))
+              if !frame.isUnbounded =>
+            failAnalysis("Only unbounded window frame is supported with Pandas UDFs.")
+
           case w @ WindowExpression(e, s) =>
             // Only allow window functions with an aggregate expression or an offset window
             // function or a Pandas window UDF.
@@ -172,7 +176,7 @@ trait CheckAnalysis extends PredicateHelper {
             failAnalysis("Null-aware predicate sub-queries cannot be used in nested " +
               s"conditions: $condition")
 
-          case j @ Join(_, _, _, Some(condition), _) if condition.dataType != BooleanType =>
+          case j @ Join(_, _, _, Some(condition)) if condition.dataType != BooleanType =>
             failAnalysis(
               s"join condition '${condition.sql}' " +
                 s"of type ${condition.dataType.catalogString} is not a boolean.")
@@ -304,7 +308,7 @@ trait CheckAnalysis extends PredicateHelper {
             val missingAttributes = o.missingInput.mkString(",")
             val input = o.inputSet.mkString(",")
             val msgForMissingAttributes = s"Resolved attribute(s) $missingAttributes missing " +
-              s"from $input in operator ${operator.simpleString(SQLConf.get.maxToStringFields)}."
+              s"from $input in operator ${operator.simpleString}."
 
             val resolver = plan.conf.resolver
             val attrsWithSameName = o.missingInput.filter { missing =>
@@ -369,7 +373,7 @@ trait CheckAnalysis extends PredicateHelper {
               s"""nondeterministic expressions are only allowed in
                  |Project, Filter, Aggregate or Window, found:
                  | ${o.expressions.map(_.sql).mkString(",")}
-                 |in operator ${operator.simpleString(SQLConf.get.maxToStringFields)}
+                 |in operator ${operator.simpleString}
                """.stripMargin)
 
           case _: UnresolvedHint =>
@@ -381,8 +385,7 @@ trait CheckAnalysis extends PredicateHelper {
     }
     extendedCheckRules.foreach(_(plan))
     plan.foreachUp {
-      case o if !o.resolved =>
-        failAnalysis(s"unresolved operator ${o.simpleString(SQLConf.get.maxToStringFields)}")
+      case o if !o.resolved => failAnalysis(s"unresolved operator ${o.simpleString}")
       case _ =>
     }
 
@@ -609,7 +612,7 @@ trait CheckAnalysis extends PredicateHelper {
         failOnNonEqualCorrelatedPredicate(foundNonEqualCorrelatedPred, a)
 
       // Join can host correlated expressions.
-      case j @ Join(left, right, joinType, _, _) =>
+      case j @ Join(left, right, joinType, _) =>
         joinType match {
           // Inner join, like Filter, can be anywhere.
           case _: InnerLike =>

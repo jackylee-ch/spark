@@ -25,7 +25,6 @@ import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.util.{ArrayData, MapData}
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types._
 
 /**
@@ -102,7 +101,7 @@ case class UserDefinedGenerator(
     inputRow = new InterpretedProjection(children)
     convertToScala = {
       val inputSchema = StructType(children.map { e =>
-        StructField(e.simpleString(SQLConf.get.maxToStringFields), e.dataType, nullable = true)
+        StructField(e.simpleString, e.dataType, nullable = true)
       })
       CatalystTypeConverters.createToScalaConverter(inputSchema)
     }.asInstanceOf[InternalRow => Row]
@@ -259,7 +258,7 @@ case class GeneratorOuter(child: Generator) extends UnaryExpression with Generat
     throw new UnsupportedOperationException(s"Cannot evaluate expression: $this")
 
   final override protected def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode =
-    throw new UnsupportedOperationException(s"Cannot generate code for expression: $this")
+    throw new UnsupportedOperationException(s"Cannot evaluate expression: $this")
 
   override def elementSchema: StructType = child.elementSchema
 

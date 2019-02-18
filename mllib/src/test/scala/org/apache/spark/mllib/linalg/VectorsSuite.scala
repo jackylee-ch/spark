@@ -25,7 +25,6 @@ import org.json4s.jackson.JsonMethods.{parse => parseJson}
 
 import org.apache.spark.{SparkConf, SparkException, SparkFunSuite}
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.Kryo._
 import org.apache.spark.ml.{linalg => newlinalg}
 import org.apache.spark.mllib.util.TestingUtils._
 import org.apache.spark.serializer.KryoSerializer
@@ -39,7 +38,7 @@ class VectorsSuite extends SparkFunSuite with Logging {
 
   test("kryo class register") {
     val conf = new SparkConf(false)
-    conf.set(KRYO_REGISTRATION_REQUIRED, true)
+    conf.set("spark.kryo.registrationRequired", "true")
 
     val ser = new KryoSerializer(conf).newInstance()
     def check[T: ClassTag](t: T) {

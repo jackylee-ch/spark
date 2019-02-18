@@ -62,7 +62,7 @@ private[ui] class JobPage(parent: JobsTab, store: AppStatusStore) extends WebUIP
       val stageId = stage.stageId
       val attemptId = stage.attemptId
       val name = stage.name
-      val status = stage.status.toString.toLowerCase(Locale.ROOT)
+      val status = stage.status.toString
       val submissionTime = stage.submissionTime.get.getTime()
       val completionTime = stage.completionTime.map(_.getTime())
         .getOrElse(System.currentTimeMillis())
@@ -184,11 +184,12 @@ private[ui] class JobPage(parent: JobsTab, store: AppStatusStore) extends WebUIP
   }
 
   def render(request: HttpServletRequest): Seq[Node] = {
-    val parameterId = request.getParameter("id")
+    // stripXSS is called first to remove suspicious characters used in XSS attacks
+    val parameterId = UIUtils.stripXSS(request.getParameter("id"))
     require(parameterId != null && parameterId.nonEmpty, "Missing id parameter")
 
     val jobId = parameterId.toInt
-    val (jobData, sqlExecutionId) = store.asOption(store.jobWithAssociatedSql(jobId)).getOrElse {
+    val jobData = store.asOption(store.job(jobId)).getOrElse {
       val content =
         <div id="no-info">
           <p>No information to display for job {jobId}</p>
@@ -196,7 +197,6 @@ private[ui] class JobPage(parent: JobsTab, store: AppStatusStore) extends WebUIP
       return UIUtils.headerSparkPage(
         request, s"Details for Job $jobId", content, parent)
     }
-
     val isComplete = jobData.status != JobExecutionStatus.RUNNING
     val stages = jobData.stageIds.map { stageId =>
       // This could be empty if the listener hasn't received information about the
@@ -278,17 +278,6 @@ private[ui] class JobPage(parent: JobsTab, store: AppStatusStore) extends WebUIP
             <Strong>Status:</Strong>
             {jobData.status}
           </li>
-          {
-            if (sqlExecutionId.isDefined) {
-              <li>
-                <strong>Associated SQL Query: </strong>
-                {<a href={"%s/SQL/execution/?id=%s".format(
-                  UIUtils.prependBaseUri(request, parent.basePath),
-                  sqlExecutionId.get)
-                }>{sqlExecutionId.get}</a>}
-              </li>
-            }
-          }
           {
             if (jobData.jobGroup.isDefined) {
               <li>

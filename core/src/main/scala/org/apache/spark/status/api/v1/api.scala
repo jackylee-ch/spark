@@ -106,8 +106,7 @@ class ExecutorSummary private[spark](
     val blacklistedInStages: Set[Int],
     @JsonSerialize(using = classOf[ExecutorMetricsJsonSerializer])
     @JsonDeserialize(using = classOf[ExecutorMetricsJsonDeserializer])
-    val peakMemoryMetrics: Option[ExecutorMetrics],
-    val attributes: Map[String, String])
+    val peakMemoryMetrics: Option[ExecutorMetrics])
 
 class MemoryMetrics private[spark](
     val usedOnHeapStorageMemory: Long,
@@ -134,15 +133,12 @@ private[spark] class ExecutorMetricsJsonSerializer
       jsonGenerator: JsonGenerator,
       serializerProvider: SerializerProvider): Unit = {
     metrics.foreach { m: ExecutorMetrics =>
-      val metricsMap = ExecutorMetricType.metricToOffset.map { case (metric, _) =>
-        metric -> m.getMetricValue(metric)
-      }
+      val metricsMap = ExecutorMetricType.values.map { metricType =>
+            metricType.name -> m.getMetricValue(metricType)
+      }.toMap
       jsonGenerator.writeObject(metricsMap)
     }
   }
-
-  override def isEmpty(provider: SerializerProvider, value: Option[ExecutorMetrics]): Boolean =
-    value.isEmpty
 }
 
 class JobData private[spark](
@@ -254,10 +250,7 @@ class TaskData private[spark](
     val speculative: Boolean,
     val accumulatorUpdates: Seq[AccumulableInfo],
     val errorMessage: Option[String] = None,
-    val taskMetrics: Option[TaskMetrics] = None,
-    val executorLogs: Map[String, String],
-    val schedulerDelay: Long,
-    val gettingResultTime: Long)
+    val taskMetrics: Option[TaskMetrics] = None)
 
 class TaskMetrics private[spark](
     val executorDeserializeTime: Long,
@@ -353,7 +346,6 @@ class VersionInfo private[spark](
 class ApplicationEnvironmentInfo private[spark] (
     val runtime: RuntimeInfo,
     val sparkProperties: Seq[(String, String)],
-    val hadoopProperties: Seq[(String, String)],
     val systemProperties: Seq[(String, String)],
     val classpathEntries: Seq[(String, String)])
 

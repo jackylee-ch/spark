@@ -28,7 +28,6 @@ import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.{ApplicationDescription, Command, ExecutorState}
 import org.apache.spark.deploy.DeployMessages.ExecutorStateChanged
 import org.apache.spark.internal.Logging
-import org.apache.spark.internal.config.UI._
 import org.apache.spark.rpc.RpcEndpointRef
 import org.apache.spark.util.{ShutdownHookManager, Utils}
 import org.apache.spark.util.logging.FileAppender
@@ -161,7 +160,7 @@ private[deploy] class ExecutorRunner(
 
       // Add webUI log urls
       val baseUrl =
-        if (conf.get(UI_REVERSE_PROXY)) {
+        if (conf.getBoolean("spark.ui.reverseProxy", false)) {
           s"/proxy/$workerId/logPage/?appId=$appId&executorId=$execId&logType="
         } else {
           s"http://$publicAddress:$webUiPort/logPage/?appId=$appId&executorId=$execId&logType="

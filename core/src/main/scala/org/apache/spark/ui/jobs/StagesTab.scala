@@ -19,7 +19,6 @@ package org.apache.spark.ui.jobs
 
 import javax.servlet.http.HttpServletRequest
 
-import org.apache.spark.internal.config.SCHEDULER_MODE
 import org.apache.spark.scheduler.SchedulingMode
 import org.apache.spark.status.AppStatusStore
 import org.apache.spark.status.api.v1.StageStatus
@@ -41,12 +40,14 @@ private[ui] class StagesTab(val parent: SparkUI, val store: AppStatusStore)
     store
       .environmentInfo()
       .sparkProperties
-      .contains((SCHEDULER_MODE.key, SchedulingMode.FAIR.toString))
+      .contains(("spark.scheduler.mode", SchedulingMode.FAIR.toString))
   }
 
   def handleKillRequest(request: HttpServletRequest): Unit = {
     if (killEnabled && parent.securityManager.checkModifyPermissions(request.getRemoteUser)) {
-      Option(request.getParameter("id")).map(_.toInt).foreach { id =>
+      // stripXSS is called first to remove suspicious characters used in XSS attacks
+      val stageId = Option(UIUtils.stripXSS(request.getParameter("id"))).map(_.toInt)
+      stageId.foreach { id =>
         store.asOption(store.lastStageAttempt(id)).foreach { stage =>
           val status = stage.status
           if (status == StageStatus.ACTIVE || status == StageStatus.PENDING) {

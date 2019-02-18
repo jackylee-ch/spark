@@ -80,19 +80,36 @@ private[spark] class ShuffleMapTask(
   override def runTask(context: TaskContext): MapStatus = {
     // Deserialize the RDD using the broadcast variable.
     val threadMXBean = ManagementFactory.getThreadMXBean
-    val deserializeStartTimeNs = System.nanoTime()
+    val deserializeStartTime = System.currentTimeMillis()
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
     val ser = SparkEnv.get.closureSerializer.newInstance()
     val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
-    _executorDeserializeTimeNs = System.nanoTime() - deserializeStartTimeNs
+    _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
     } else 0L
 
-    dep.shuffleWriterProcessor.write(rdd, dep, partitionId, context, partition)
+    var writer: ShuffleWriter[Any, Any] = null
+    try {
+      val manager = SparkEnv.get.shuffleManager
+      writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
+      writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+      writer.stop(success = true).get
+    } catch {
+      case e: Exception =>
+        try {
+          if (writer != null) {
+            writer.stop(success = false)
+          }
+        } catch {
+          case e: Exception =>
+            log.debug("Could not stop writer", e)
+        }
+        throw e
+    }
   }
 
   override def preferredLocations: Seq[TaskLocation] = preferredLocs

@@ -42,7 +42,6 @@ public class TransportConf {
   private final String SPARK_NETWORK_IO_RETRYWAIT_KEY;
   private final String SPARK_NETWORK_IO_LAZYFD_KEY;
   private final String SPARK_NETWORK_VERBOSE_METRICS;
-  private final String SPARK_NETWORK_IO_ENABLETCPKEEPALIVE_KEY;
 
   private final ConfigProvider conf;
 
@@ -65,7 +64,6 @@ public class TransportConf {
     SPARK_NETWORK_IO_RETRYWAIT_KEY = getConfKey("io.retryWait");
     SPARK_NETWORK_IO_LAZYFD_KEY = getConfKey("io.lazyFD");
     SPARK_NETWORK_VERBOSE_METRICS = getConfKey("io.enableVerboseMetrics");
-    SPARK_NETWORK_IO_ENABLETCPKEEPALIVE_KEY = getConfKey("io.enableTcpKeepAlive");
   }
 
   public int getInt(String name, int defaultValue) {
@@ -176,14 +174,6 @@ public class TransportConf {
   }
 
   /**
-   * Whether to enable TCP keep-alive. If true, the TCP keep-alives are enabled, which removes
-   * connections that are idle for too long.
-   */
-  public boolean enableTcpKeepAlive() {
-    return conf.getBoolean(SPARK_NETWORK_IO_ENABLETCPKEEPALIVE_KEY, false);
-  }
-
-  /**
    * Maximum number of retries when binding to a port before giving up.
    */
   public int portMaxRetries() {
@@ -276,23 +266,6 @@ public class TransportConf {
   }
 
   /**
-   * Flag indicating whether to share the pooled ByteBuf allocators between the different Netty
-   * channels. If enabled then only two pooled ByteBuf allocators are created: one where caching
-   * is allowed (for transport servers) and one where not (for transport clients).
-   * When disabled a new allocator is created for each transport servers and clients.
-   */
-  public boolean sharedByteBufAllocators() {
-    return conf.getBoolean("spark.network.sharedByteBufAllocators.enabled", true);
-  }
-
-  /**
-  * If enabled then off-heap byte buffers will be prefered for the shared ByteBuf allocators.
-  */
-  public boolean preferDirectBufsForSharedByteBufAllocators() {
-    return conf.getBoolean("spark.network.io.preferDirectBufs", true);
-  }
-
-  /**
    * The commons-crypto configuration for the module.
    */
   public Properties cryptoConf() {
@@ -323,22 +296,17 @@ public class TransportConf {
    * and could take long time to process due to disk contentions. By configuring a slightly
    * higher number of shuffler server threads, we are able to reserve some threads for
    * handling other RPC messages, thus making the Client less likely to experience timeout
-   * when sending RPC messages to the shuffle server. The number of threads used for handling
-   * chunked fetch requests are percentage of io.serverThreads (if defined) else it is a percentage
-   * of 2 * #cores. However, a percentage of 0 means netty default number of threads which
-   * is 2 * #cores ignoring io.serverThreads. The percentage here is configured via
-   * spark.shuffle.server.chunkFetchHandlerThreadsPercent. The returned value is rounded off to
-   * ceiling of the nearest integer.
+   * when sending RPC messages to the shuffle server. Default to 0, which is 2*#cores
+   * or io.serverThreads. 90 would mean 90% of 2*#cores or 90% of io.serverThreads
+   * which equals 0.9 * 2*#cores or 0.9 * io.serverThreads.
    */
   public int chunkFetchHandlerThreads() {
     if (!this.getModuleName().equalsIgnoreCase("shuffle")) {
       return 0;
     }
     int chunkFetchHandlerThreadsPercent =
-      conf.getInt("spark.shuffle.server.chunkFetchHandlerThreadsPercent", 100);
-    int threads =
-      this.serverThreads() > 0 ? this.serverThreads() : 2 * NettyRuntime.availableProcessors();
-    return (int) Math.ceil(threads * (chunkFetchHandlerThreadsPercent / 100.0));
+      conf.getInt("spark.shuffle.server.chunkFetchHandlerThreadsPercent", 0);
+    return this.serverThreads() > 0 ? (this.serverThreads() * chunkFetchHandlerThreadsPercent)/100:
+      (2 * NettyRuntime.availableProcessors() * chunkFetchHandlerThreadsPercent)/100;
   }
-
 }

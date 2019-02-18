@@ -246,7 +246,7 @@ class MathExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
 
   test("toDegrees") {
     testUnary(ToDegrees, math.toDegrees)
-    checkConsistencyBetweenInterpretedAndCodegen(ToDegrees, DoubleType)
+    checkConsistencyBetweenInterpretedAndCodegen(Acos, DoubleType)
   }
 
   test("toRadians") {

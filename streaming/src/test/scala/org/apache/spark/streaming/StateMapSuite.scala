@@ -35,7 +35,7 @@ class StateMapSuite extends SparkFunSuite {
 
   test("EmptyStateMap") {
     val map = new EmptyStateMap[Int, Int]
-    intercept[UnsupportedOperationException] {
+    intercept[scala.NotImplementedError] {
       map.put(1, 1, 1)
     }
     assert(map.get(1) === None)

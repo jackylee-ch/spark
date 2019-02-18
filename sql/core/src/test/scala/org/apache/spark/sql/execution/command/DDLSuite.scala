@@ -24,7 +24,6 @@ import java.util.Locale
 import org.apache.hadoop.fs.Path
 import org.scalatest.BeforeAndAfterEach
 
-import org.apache.spark.internal.config
 import org.apache.spark.sql.{AnalysisException, QueryTest, Row, SaveMode}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.{FunctionRegistry, NoSuchPartitionException, NoSuchTableException, TempTableAlreadyExistsException}
@@ -377,41 +376,41 @@ abstract class DDLSuite extends QueryTest with SQLTestUtils {
     }
   }
 
-  private def withEmptyDirInTablePath(dirName: String)(f : File => Unit): Unit = {
-    val tableLoc =
-      new File(spark.sessionState.catalog.defaultTablePath(TableIdentifier(dirName)))
+  test("CTAS a managed table with the existing empty directory") {
+    val tableLoc = new File(spark.sessionState.catalog.defaultTablePath(TableIdentifier("tab1")))
     try {
       tableLoc.mkdir()
-      f(tableLoc)
+      withTable("tab1") {
+        sql(s"CREATE TABLE tab1 USING ${dataSource} AS SELECT 1, 'a'")
+        checkAnswer(spark.table("tab1"), Row(1, "a"))
+      }
     } finally {
       waitForTasksToFinish()
       Utils.deleteRecursively(tableLoc)
     }
   }
 
-
-  test("CTAS a managed table with the existing empty directory") {
-    withEmptyDirInTablePath("tab1") { tableLoc =>
-      withTable("tab1") {
-        sql(s"CREATE TABLE tab1 USING ${dataSource} AS SELECT 1, 'a'")
-        checkAnswer(spark.table("tab1"), Row(1, "a"))
-      }
-    }
-  }
-
   test("create a managed table with the existing empty directory") {
-    withEmptyDirInTablePath("tab1") { tableLoc =>
+    val tableLoc = new File(spark.sessionState.catalog.defaultTablePath(TableIdentifier("tab1")))
+    try {
+      tableLoc.mkdir()
       withTable("tab1") {
         sql(s"CREATE TABLE tab1 (col1 int, col2 string) USING ${dataSource}")
         sql("INSERT INTO tab1 VALUES (1, 'a')")
         checkAnswer(spark.table("tab1"), Row(1, "a"))
       }
+    } finally {
+      waitForTasksToFinish()
+      Utils.deleteRecursively(tableLoc)
     }
   }
 
   test("create a managed table with the existing non-empty directory") {
     withTable("tab1") {
-      withEmptyDirInTablePath("tab1") { tableLoc =>
+      val tableLoc = new File(spark.sessionState.catalog.defaultTablePath(TableIdentifier("tab1")))
+      try {
+        // create an empty hidden file
+        tableLoc.mkdir()
         val hiddenGarbageFile = new File(tableLoc.getCanonicalPath, ".garbage")
         hiddenGarbageFile.createNewFile()
         val exMsg = "Can not create the managed table('`tab1`'). The associated location"
@@ -439,20 +438,28 @@ abstract class DDLSuite extends QueryTest with SQLTestUtils {
           }.getMessage
           assert(ex.contains(exMsgWithDefaultDB))
         }
+      } finally {
+        waitForTasksToFinish()
+        Utils.deleteRecursively(tableLoc)
       }
     }
   }
 
   test("rename a managed table with existing empty directory") {
-    withEmptyDirInTablePath("tab2") { tableLoc =>
+    val tableLoc = new File(spark.sessionState.catalog.defaultTablePath(TableIdentifier("tab2")))
+    try {
       withTable("tab1") {
         sql(s"CREATE TABLE tab1 USING $dataSource AS SELECT 1, 'a'")
+        tableLoc.mkdir()
         val ex = intercept[AnalysisException] {
           sql("ALTER TABLE tab1 RENAME TO tab2")
         }.getMessage
         val expectedMsg = "Can not rename the managed table('`tab1`'). The associated location"
         assert(ex.contains(expectedMsg))
       }
+    } finally {
+      waitForTasksToFinish()
+      Utils.deleteRecursively(tableLoc)
     }
   }
 
@@ -2707,12 +2714,5 @@ abstract class DDLSuite extends QueryTest with SQLTestUtils {
         }
       }
     }
-  }
-
-  test("set command rejects SparkConf entries") {
-    val ex = intercept[AnalysisException] {
-      sql(s"SET ${config.CPUS_PER_TASK.key} = 4")
-    }
-    assert(ex.getMessage.contains("Spark config"))
   }
 }

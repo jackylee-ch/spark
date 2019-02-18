@@ -18,7 +18,6 @@
 package org.apache.spark.sql.catalyst.expressions.codegen
 
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.BindReferences.bindReferences
 import org.apache.spark.sql.catalyst.expressions.aggregate.NoOp
 
 // MutableProjection is not accessible in Java
@@ -36,7 +35,7 @@ object GenerateMutableProjection extends CodeGenerator[Seq[Expression], MutableP
     in.map(ExpressionCanonicalizer.execute)
 
   protected def bind(in: Seq[Expression], inputSchema: Seq[Attribute]): Seq[Expression] =
-    bindReferences(in, inputSchema)
+    in.map(BindReferences.bindReference(_, inputSchema))
 
   def generate(
       expressions: Seq[Expression],

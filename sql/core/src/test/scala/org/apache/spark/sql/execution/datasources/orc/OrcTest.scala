@@ -25,9 +25,8 @@ import scala.reflect.runtime.universe.TypeTag
 import org.scalatest.BeforeAndAfterAll
 
 import org.apache.spark.sql._
-import org.apache.spark.sql.execution.datasources.FileBasedDataSourceTest
-import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.ORC_IMPLEMENTATION
+import org.apache.spark.sql.test.SQLTestUtils
 
 /**
  * OrcTest
@@ -43,15 +42,12 @@ import org.apache.spark.sql.internal.SQLConf.ORC_IMPLEMENTATION
  *   -> OrcFilterSuite
  *   -> HiveOrcFilterSuite
  */
-abstract class OrcTest extends QueryTest with FileBasedDataSourceTest with BeforeAndAfterAll {
+abstract class OrcTest extends QueryTest with SQLTestUtils with BeforeAndAfterAll {
+  import testImplicits._
 
   val orcImp: String = "native"
 
   private var originalConfORCImplementation = "native"
-
-  override protected val dataSourceName: String = "orc"
-  override protected val vectorizedReaderEnabledKey: String =
-    SQLConf.ORC_VECTORIZED_READER_ENABLED.key
 
   protected override def beforeAll(): Unit = {
     super.beforeAll()
@@ -70,15 +66,22 @@ abstract class OrcTest extends QueryTest with FileBasedDataSourceTest with Befor
    */
   protected def withOrcFile[T <: Product: ClassTag: TypeTag]
       (data: Seq[T])
-      (f: String => Unit): Unit = withDataSourceFile(data)(f)
+      (f: String => Unit): Unit = {
+    withTempPath { file =>
+      sparkContext.parallelize(data).toDF().write.orc(file.getCanonicalPath)
+      f(file.getCanonicalPath)
+    }
+  }
 
   /**
    * Writes `data` to a Orc file and reads it back as a `DataFrame`,
    * which is then passed to `f`. The Orc file will be deleted after `f` returns.
    */
   protected def withOrcDataFrame[T <: Product: ClassTag: TypeTag]
-      (data: Seq[T], testVectorized: Boolean = true)
-      (f: DataFrame => Unit): Unit = withDataSourceDataFrame(data, testVectorized)(f)
+      (data: Seq[T])
+      (f: DataFrame => Unit): Unit = {
+    withOrcFile(data)(path => f(spark.read.orc(path)))
+  }
 
   /**
    * Writes `data` to a Orc file, reads it back as a `DataFrame` and registers it as a
@@ -86,22 +89,21 @@ abstract class OrcTest extends QueryTest with FileBasedDataSourceTest with Befor
    * Orc file will be dropped/deleted after `f` returns.
    */
   protected def withOrcTable[T <: Product: ClassTag: TypeTag]
-      (data: Seq[T], tableName: String, testVectorized: Boolean = true)
-      (f: => Unit): Unit = withDataSourceTable(data, tableName, testVectorized)(f)
-
-  protected def makeOrcFile[T <: Product: ClassTag: TypeTag](
-      data: Seq[T], path: File): Unit = makeDataSourceFile(data, path)
-
-  protected def makeOrcFile[T <: Product: ClassTag: TypeTag](
-      df: DataFrame, path: File): Unit = makeDataSourceFile(df, path)
-
-  protected def checkPredicatePushDown(df: DataFrame, numRows: Int, predicate: String): Unit = {
-    withTempPath { file =>
-      // It needs to repartition data so that we can have several ORC files
-      // in order to skip stripes in ORC.
-      df.repartition(numRows).write.orc(file.getCanonicalPath)
-      val actual = stripSparkFilter(spark.read.orc(file.getCanonicalPath).where(predicate)).count()
-      assert(actual < numRows)
+      (data: Seq[T], tableName: String)
+      (f: => Unit): Unit = {
+    withOrcDataFrame(data) { df =>
+      df.createOrReplaceTempView(tableName)
+      withTempView(tableName)(f)
     }
+  }
+
+  protected def makeOrcFile[T <: Product: ClassTag: TypeTag](
+      data: Seq[T], path: File): Unit = {
+    data.toDF().write.mode(SaveMode.Overwrite).orc(path.getCanonicalPath)
+  }
+
+  protected def makeOrcFile[T <: Product: ClassTag: TypeTag](
+      df: DataFrame, path: File): Unit = {
+    df.write.mode(SaveMode.Overwrite).orc(path.getCanonicalPath)
   }
 }
