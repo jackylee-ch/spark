@@ -80,13 +80,14 @@ abstract class NestedSchemaPruningBenchmark extends SqlBasedBenchmark {
       }
 
       val benchmark = new Benchmark(s"Limiting", numRows, numIters, output = output)
+      val limit = 10000
 
       addCase(benchmark, "Top-level column",
-        s"SELECT col1 FROM (SELECT col1 FROM t1 LIMIT ${Int.MaxValue})")
+        s"SELECT col1 FROM (SELECT col1 FROM t1 LIMIT $limit)")
       addCase(benchmark, "Nested column",
-        s"SELECT col2._1 FROM (SELECT col2 FROM t2 LIMIT ${Int.MaxValue})")
+        s"SELECT col2._1 FROM (SELECT col2 FROM t2 LIMIT $limit)")
       addCase(benchmark, "Nested column in array",
-        s"SELECT col3._1 FROM (SELECT col3 FROM t3 LIMIT ${Int.MaxValue})")
+        s"SELECT col3._1 FROM (SELECT col3 FROM t3 LIMIT $limit)")
 
       benchmark.run()
     }
