@@ -80,14 +80,25 @@ abstract class NestedSchemaPruningBenchmark extends SqlBasedBenchmark {
       }
 
       val benchmark = new Benchmark(s"Limiting", numRows, numIters, output = output)
-      val limit = 10000
+      val limit = 10
 
-      addCase(benchmark, "Top-level column",
-        s"SELECT col1 FROM (SELECT col1 FROM t1 LIMIT $limit)")
-      addCase(benchmark, "Nested column",
-        s"SELECT col2._1 FROM (SELECT col2 FROM t2 LIMIT $limit)")
-      addCase(benchmark, "Nested column in array",
-        s"SELECT col3._1 FROM (SELECT col3 FROM t3 LIMIT $limit)")
+      withSQLConf(SQLConf.PARQUET_LIMIT_PUSHDOWN_ENABLED.key -> "false") {
+        addCase(benchmark, "Top-level column with out limit",
+          s"SELECT col1 FROM (SELECT col1 FROM t1 LIMIT $limit)")
+        addCase(benchmark, "Nested column with out limit",
+          s"SELECT col2._1 FROM (SELECT col2 FROM t2 LIMIT $limit)")
+        addCase(benchmark, "Nested column in array with out limit",
+          s"SELECT col3._1 FROM (SELECT col3 FROM t3 LIMIT $limit)")
+      }
+
+      withSQLConf(SQLConf.PARQUET_LIMIT_PUSHDOWN_ENABLED.key -> "true") {
+        addCase(benchmark, "Top-level column with limit",
+          s"SELECT col1 FROM (SELECT col1 FROM t1 LIMIT $limit)")
+        addCase(benchmark, "Nested column with limit",
+          s"SELECT col2._1 FROM (SELECT col2 FROM t2 LIMIT $limit)")
+        addCase(benchmark, "Nested column in array with limit",
+          s"SELECT col3._1 FROM (SELECT col3 FROM t3 LIMIT $limit)")
+      }
 
       benchmark.run()
     }
