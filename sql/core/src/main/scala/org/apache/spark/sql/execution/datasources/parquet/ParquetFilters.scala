@@ -38,6 +38,7 @@ import org.apache.spark.sql.catalyst.{InternalRow, StructFilters}
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, BoundReference, Predicate}
 import org.apache.spark.sql.catalyst.util.{CaseInsensitiveMap, DateTimeUtils, IntervalUtils}
 import org.apache.spark.sql.catalyst.util.RebaseDateTime.{rebaseGregorianToJulianDays, rebaseGregorianToJulianMicros, RebaseSpec}
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.LegacyBehaviorPolicy
 import org.apache.spark.sql.sources
 import org.apache.spark.sql.types.StructType
@@ -794,7 +795,9 @@ class ParquetFilters(
           )
         }
 
-      case _ if predicate.references.forall(partitionSchema.names.contains) =>
+      case _
+        if predicate.references.forall(partitionSchema.names.contains) &&
+          SQLConf.get.parquetFilterPushDownPartition =>
         evaluateFilter(predicate)
 
       case _ => None
