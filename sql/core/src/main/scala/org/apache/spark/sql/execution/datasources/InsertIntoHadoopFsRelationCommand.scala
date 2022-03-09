@@ -91,7 +91,6 @@ case class InsertIntoHadoopFsRelationCommand(
       catalogTable.get.tracksPartitionsInCatalog
 
     var initialMatchingPartitions: Seq[TablePartitionSpec] = Nil
-    var customPartitionLocations: Map[TablePartitionSpec, String] = Map.empty
     var matchingPartitions: Seq[CatalogTablePartition] = Seq.empty
 
     // When partitions are tracked by the catalog, compute all custom partition locations that
@@ -100,8 +99,6 @@ case class InsertIntoHadoopFsRelationCommand(
       matchingPartitions = sparkSession.sessionState.catalog.listPartitions(
         catalogTable.get.identifier, Some(staticPartitions))
       initialMatchingPartitions = matchingPartitions.map(_.spec)
-      customPartitionLocations = getCustomPartitionLocations(
-        fs, catalogTable.get, qualifiedOutputPath, matchingPartitions)
     }
 
     val jobId = java.util.UUID.randomUUID().toString
@@ -125,7 +122,7 @@ case class InsertIntoHadoopFsRelationCommand(
             // For dynamic partition overwrite, do not delete partition directories ahead.
             true
           } else {
-            deleteMatchingPartitions(fs, qualifiedOutputPath, customPartitionLocations, committer)
+            deleteMatchingPartitions(fs, qualifiedOutputPath, committer)
             true
           }
         case (SaveMode.Overwrite, _) | (SaveMode.ErrorIfExists, false) =>
@@ -220,7 +217,6 @@ case class InsertIntoHadoopFsRelationCommand(
   private def deleteMatchingPartitions(
       fs: FileSystem,
       qualifiedOutputPath: Path,
-      customPartitionLocations: Map[TablePartitionSpec, String],
       committer: FileCommitProtocol): Unit = {
     val staticPartitionPrefix = if (staticPartitions.nonEmpty) {
       "/" + partitionColumns.flatMap { p =>
@@ -233,16 +229,6 @@ case class InsertIntoHadoopFsRelationCommand(
     val staticPrefixPath = qualifiedOutputPath.suffix(staticPartitionPrefix)
     if (fs.exists(staticPrefixPath) && !committer.deleteWithJob(fs, staticPrefixPath, true)) {
       throw QueryExecutionErrors.cannotClearOutputDirectoryError(staticPrefixPath)
-    }
-    // now clear all custom partition locations (e.g. /custom/dir/where/foo=2/bar=4)
-    for ((spec, customLoc) <- customPartitionLocations) {
-      assert(
-        (staticPartitions.toSet -- spec).isEmpty,
-        "Custom partition location did not match static partitioning keys")
-      val path = new Path(customLoc)
-      if (fs.exists(path) && !committer.deleteWithJob(fs, path, true)) {
-        throw QueryExecutionErrors.cannotClearPartitionDirectoryError(path)
-      }
     }
   }
 
