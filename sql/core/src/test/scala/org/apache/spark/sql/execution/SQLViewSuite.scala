@@ -218,10 +218,13 @@ abstract class SQLViewSuite extends QueryTest with SQLTestUtils {
       }.getMessage
       assert(e4.contains(
         s"$viewName is a temp view. 'ANALYZE TABLE' expects a table or permanent view."))
-      val e5 = intercept[AnalysisException] {
-        sql(s"ANALYZE TABLE $viewName COMPUTE STATISTICS FOR COLUMNS id")
-      }.getMessage
-      assert(e5.contains(s"Temporary view `$viewName` is not cached for analyzing columns."))
+      checkError(
+        exception = intercept[AnalysisException] {
+          sql(s"ANALYZE TABLE $viewName COMPUTE STATISTICS FOR COLUMNS id")
+        },
+        errorClass = "UNSUPPORTED_FEATURE.ANALYZE_UNCACHED_TEMP_VIEW",
+        parameters = Map("viewName" -> "`testView`")
+      )
     }
   }
 
@@ -311,7 +314,8 @@ abstract class SQLViewSuite extends QueryTest with SQLTestUtils {
     val e = intercept[AnalysisException] {
       sql("CREATE OR REPLACE TEMPORARY VIEW default.myabcdview AS SELECT * FROM jt")
     }
-    assert(e.message.contains("It is not allowed to add database prefix"))
+    assert(e.message.contains(
+      "CREATE TEMPORARY VIEW or the corresponding Dataset APIs only accept single-part view names"))
   }
 
   test("error handling: disallow IF NOT EXISTS for CREATE TEMPORARY VIEW") {
@@ -345,11 +349,14 @@ abstract class SQLViewSuite extends QueryTest with SQLTestUtils {
 
   test("SPARK-32374: disallow setting properties for CREATE TEMPORARY VIEW") {
     withTempView("myabcdview") {
-      val e = intercept[ParseException] {
-        sql("CREATE TEMPORARY VIEW myabcdview TBLPROPERTIES ('a' = 'b') AS SELECT * FROM jt")
-      }
-      assert(e.message.contains(
-        "Operation not allowed: TBLPROPERTIES can't coexist with CREATE TEMPORARY VIEW"))
+      val sqlText = "CREATE TEMPORARY VIEW myabcdview TBLPROPERTIES ('a' = 'b') AS SELECT * FROM jt"
+      checkError(
+        exception = intercept[ParseException] {
+          sql(sqlText)
+        },
+        errorClass = "_LEGACY_ERROR_TEMP_0035",
+        parameters = Map("message" -> "TBLPROPERTIES can't coexist with CREATE TEMPORARY VIEW"),
+        context = ExpectedContext(sqlText, 0, 77))
     }
   }
 
@@ -948,9 +955,10 @@ abstract class SQLViewSuite extends QueryTest with SQLTestUtils {
               sql("SELECT * FROM v3")
             }
             checkError(e,
-              errorClass = "COLUMN_NOT_IN_GROUP_BY_CLAUSE",
+              errorClass = "MISSING_AGGREGATION",
               parameters = Map(
-                "expression" -> "\"c1\""))
+                "expression" -> "\"c1\"",
+                "expressionAnyValue" -> "\"any_value(c1)\""))
           }
           withSQLConf(GROUP_BY_ALIASES.key -> "false") {
             val e = intercept[AnalysisException] {

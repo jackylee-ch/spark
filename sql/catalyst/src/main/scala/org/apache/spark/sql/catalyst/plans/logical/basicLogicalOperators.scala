@@ -273,16 +273,17 @@ case class Generate(
 
   override def producedAttributes: AttributeSet = AttributeSet(generatorOutput)
 
-  def qualifiedGeneratorOutput: Seq[Attribute] = {
-    val qualifiedOutput = qualifier.map { q =>
-      // prepend the new qualifier to the existed one
-      generatorOutput.map(a => a.withQualifier(Seq(q)))
-    }.getOrElse(generatorOutput)
-    val nullableOutput = qualifiedOutput.map {
-      // if outer, make all attributes nullable, otherwise keep existing nullability
-      a => a.withNullability(outer || a.nullable)
+  def nullableOutput: Seq[Attribute] = {
+    generatorOutput.map { a =>
+      a.withNullability(outer || a.nullable)
     }
-    nullableOutput
+  }
+
+  def qualifiedGeneratorOutput: Seq[Attribute] = {
+    qualifier.map { q =>
+      // prepend the new qualifier to the existed one
+      nullableOutput.map(a => a.withQualifier(Seq(q)))
+    }.getOrElse(nullableOutput)
   }
 
   def output: Seq[Attribute] = requiredChildOutput ++ qualifiedGeneratorOutput
@@ -341,7 +342,7 @@ case class Intersect(
     right: LogicalPlan,
     isAll: Boolean) extends SetOperation(left, right) {
 
-  override def nodeName: String = getClass.getSimpleName + ( if ( isAll ) "All" else "" )
+  override def nodeName: String = getClass.getSimpleName + ( if ( isAll ) " All" else "" )
 
   final override val nodePatterns: Seq[TreePattern] = Seq(INTERSECT)
 
@@ -371,7 +372,7 @@ case class Except(
     left: LogicalPlan,
     right: LogicalPlan,
     isAll: Boolean) extends SetOperation(left, right) {
-  override def nodeName: String = getClass.getSimpleName + ( if ( isAll ) "All" else "" )
+  override def nodeName: String = getClass.getSimpleName + ( if ( isAll ) " All" else "" )
   /** We don't use right.output because those rows get excluded from the set. */
   override def output: Seq[Attribute] = left.output
 
@@ -905,25 +906,28 @@ object Range {
   }
 
   def getOutputAttrs: Seq[Attribute] = {
-    StructType(StructField("id", LongType, nullable = false) :: Nil).toAttributes
+    StructType(Array(StructField("id", LongType, nullable = false))).toAttributes
   }
 
   private def typeCoercion: TypeCoercionBase = {
     if (SQLConf.get.ansiEnabled) AnsiTypeCoercion else TypeCoercion
   }
 
-  private def castAndEval[T](expression: Expression, dataType: DataType): T = {
+  private def castAndEval[T](expression: Expression, dataType: DataType, paramIndex: Int): T = {
     typeCoercion.implicitCast(expression, dataType)
       .map(_.eval())
       .filter(_ != null)
       .getOrElse {
-        throw QueryCompilationErrors.incompatibleRangeInputDataTypeError(expression, dataType)
+        throw QueryCompilationErrors
+          .unexpectedInputDataTypeError("range", paramIndex, dataType, expression)
       }.asInstanceOf[T]
   }
 
-  def toLong(expression: Expression): Long = castAndEval[Long](expression, LongType)
+  def toLong(expression: Expression, paramIndex: Int): Long =
+    castAndEval[Long](expression, LongType, paramIndex)
 
-  def toInt(expression: Expression): Int = castAndEval[Int](expression, IntegerType)
+  def toInt(expression: Expression, paramIndex: Int): Int =
+    castAndEval[Int](expression, IntegerType, paramIndex)
 }
 
 @ExpressionDescription(
@@ -968,11 +972,13 @@ case class Range(
 
   require(step != 0, s"step ($step) cannot be 0")
 
-  def this(start: Expression, end: Expression, step: Expression, numSlices: Expression) =
-    this(Range.toLong(start), Range.toLong(end), Range.toLong(step), Some(Range.toInt(numSlices)))
+  def this(start: Expression, end: Expression, step: Expression, numSlices: Expression) = {
+    this(Range.toLong(start, 1), Range.toLong(end, 2), Range.toLong(step, 3),
+      Some(Range.toInt(numSlices, 4)))
+  }
 
   def this(start: Expression, end: Expression, step: Expression) =
-    this(Range.toLong(start), Range.toLong(end), Range.toLong(step), None)
+    this(Range.toLong(start, 1), Range.toLong(end, 2), Range.toLong(step, 3), None)
 
   def this(start: Expression, end: Expression) = this(start, end, Literal.create(1L, LongType))
 
@@ -1626,7 +1632,15 @@ case class SubqueryAlias(
 
   override def output: Seq[Attribute] = {
     val qualifierList = identifier.qualifier :+ alias
-    child.output.map(_.withQualifier(qualifierList))
+    child.output.map { attr =>
+      // `SubqueryAlias` sets a new qualifier for its output columns. It doesn't make sense to still
+      // restrict the hidden columns of natural/using join to be accessed by qualified name only.
+      if (attr.qualifiedAccessOnly) {
+        attr.markAsAllowAnyAccess().withQualifier(qualifierList)
+      } else {
+        attr.withQualifier(qualifierList)
+      }
+    }
   }
 
   override def metadataOutput: Seq[Attribute] = {

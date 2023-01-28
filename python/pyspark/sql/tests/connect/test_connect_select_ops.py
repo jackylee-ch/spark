@@ -14,22 +14,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from pyspark.testing.connectutils import PlanOnlyTestFixture
-from pyspark.sql.connect import DataFrame
-from pyspark.sql.connect.functions import col
-from pyspark.sql.connect.plan import Read, InputValidationError
-import pyspark.sql.connect.proto as proto
+import unittest
+
+from pyspark.testing.connectutils import (
+    PlanOnlyTestFixture,
+    should_test_connect,
+    connect_requirement_message,
+)
+
+if should_test_connect:
+    from pyspark.sql.connect.functions import col
+    from pyspark.sql.connect.plan import Read
+    import pyspark.sql.connect.proto as proto
 
 
+@unittest.skipIf(not should_test_connect, connect_requirement_message)
 class SparkConnectToProtoSuite(PlanOnlyTestFixture):
-    def test_select_with_literal(self):
-        df = DataFrame.withPlan(Read("table"))
-        self.assertIsNotNone(df.select(col("name"))._plan.collect())
-        self.assertRaises(InputValidationError, df.select, "name")
+    def test_select_with_columns_and_strings(self):
+        df = self.connect.with_plan(Read("table"))
+        self.assertIsNotNone(df.select(col("name"))._plan.to_proto(self.connect))
+        self.assertIsNotNone(df.select("name"))
+        self.assertIsNotNone(df.select("name", "name2"))
+        self.assertIsNotNone(df.select(col("name"), col("name2")))
+        self.assertIsNotNone(df.select(col("name"), "name2"))
+        self.assertIsNotNone(df.select("*"))
 
     def test_join_with_join_type(self):
-        df_left = DataFrame.withPlan(Read("table"))
-        df_right = DataFrame.withPlan(Read("table"))
+        df_left = self.connect.with_plan(Read("table"))
+        df_right = self.connect.with_plan(Read("table"))
         for (join_type_str, join_type) in [
             (None, proto.Join.JoinType.JOIN_TYPE_INNER),
             ("inner", proto.Join.JoinType.JOIN_TYPE_INNER),
@@ -38,8 +50,11 @@ class SparkConnectToProtoSuite(PlanOnlyTestFixture):
             ("rightouter", proto.Join.JoinType.JOIN_TYPE_RIGHT_OUTER),
             ("leftanti", proto.Join.JoinType.JOIN_TYPE_LEFT_ANTI),
             ("leftsemi", proto.Join.JoinType.JOIN_TYPE_LEFT_SEMI),
+            ("cross", proto.Join.JoinType.JOIN_TYPE_CROSS),
         ]:
-            joined_df = df_left.join(df_right, on=col("name"), how=join_type_str)._plan.collect()
+            joined_df = df_left.join(df_right, on=col("name"), how=join_type_str)._plan.to_proto(
+                self.connect
+            )
             self.assertEqual(joined_df.root.join.join_type, join_type)
 
 

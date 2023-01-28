@@ -280,10 +280,13 @@ class JDBCTableCatalogSuite extends QueryTest with SharedSparkSession {
       }.getMessage
       assert(msg1.contains("Missing field bad_column in table h2.test.alt_table"))
       // Update column to wrong type
-      val msg2 = intercept[ParseException] {
-        sql(s"ALTER TABLE $tableName ALTER COLUMN id TYPE bad_type")
-      }.getMessage
-      assert(msg2.contains("DataType bad_type is not supported"))
+      checkError(
+        exception = intercept[ParseException] {
+          sql(s"ALTER TABLE $tableName ALTER COLUMN id TYPE bad_type")
+        },
+        errorClass = "UNSUPPORTED_DATATYPE",
+        parameters = Map("typeName" -> "\"BAD_TYPE\""),
+        context = ExpectedContext("bad_type", 51, 58))
     }
     // Update column type in not existing table and namespace
     Seq(
